@@ -1,25 +1,6 @@
 {
  "versao": 2,
- "padrao": "2026-2",
- "atualizadoEm": "2026-10-09T13:36:35.481Z",
- "periodos": [
-  {
-   "id": "2026-2",
-   "nome": "2026/2",
-   "descricao": "",
-   "arquivo": "dados/periodos/2026-2.json",
-   "inicioAulas": "",
-   "fimAulas": "",
-   "recado": "",
-   "publicadoEm": "2026-10-09T13:36:35.480Z",
-   "aulas": 249,
-   "turmas": 18,
-   "planilha": "Horários - IFSul - SG - 2026_2 .xlsx",
-   "revisao": {
-    "erros": 0,
-    "divergencias": 0,
-    "duvidas": 2
-   }
-  }
- ]
+ "padrao": null,
+ "atualizadoEm": "2026-10-09T15:10:23.986Z",
+ "periodos": []
 }
