@@ -10,10 +10,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009q"></script>
-  <script src="js/icones.js?v=20261009q"></script>
+  <script src="js/protecao.js?v=20261009r"></script>
+  <script src="js/icones.js?v=20261009r"></script>
   <link rel="preload" href="fontes/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/estilo.css?v=20261009q">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009r">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,13 +21,13 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="modulepreload" href="js/interpretar.js?v=20261009q">
-  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009q">
-  <link rel="modulepreload" href="js/publicar.js?v=20261009q">
-  <link rel="modulepreload" href="js/recursos.js?v=20261009q">
-  <link rel="modulepreload" href="js/offline.js?v=20261009q">
-  <link rel="modulepreload" href="js/leitura.js?v=20261009q">
-  <script type="module" src="js/app.js?v=20261009q"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009r">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009r">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009r">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009r">
+  <link rel="modulepreload" href="js/offline.js?v=20261009r">
+  <link rel="modulepreload" href="js/leitura.js?v=20261009r">
+  <script type="module" src="js/app.js?v=20261009r"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -272,7 +272,7 @@
          </div>
         </div>
         <div class="form-grade duas">
-         <label><span class="campo-rotulo">Observação exibida no site (opcional)</span><input id="dest-descricao" class="text-field" type="text" maxlength="120" placeholder="Ex.: válido a partir de 15/10"></label>
+         <div class="campo-info"><div class="rotulo-com-info"><label class="campo-rotulo" for="dest-descricao">Observação exibida no site (opcional)</label><button class="botao-info" type="button" aria-expanded="false" aria-controls="dest-descricao-ajuda" aria-label="O que é: Observação exibida no site"><i data-lucide="info"></i></button></div><input id="dest-descricao" class="text-field" type="text" maxlength="120" placeholder="Ex.: válido a partir de 15/10"><p id="dest-descricao-ajuda" class="ajuda-campo" hidden>Aparece como uma etiqueta pequena e discreta abaixo do título da consulta, ao passar o mouse sobre o período no seletor e na lista de períodos. Use para uma informação permanente sobre o período. Ex.: “Válido a partir de 15/10”, “Versão revisada”.</p></div>
          <label><span class="campo-rotulo">Título no topo do site</span><input id="pub-titulo" class="text-field" type="text" maxlength="120" placeholder="Ex.: IFSul — Campus Sapiranga"></label>
         </div>
         <div class="notice notice-info dia-especial" style="margin-top:1rem">
@@ -286,7 +286,7 @@
         </div>
         <p class="texto-pequeno" style="margin-top:.35rem">As datas são usadas no botão "Agenda", que coloca o horário no calendário do celular. Sem elas, quem baixar escolhe as datas.</p>
         <div class="form-grade">
-         <label><span class="campo-rotulo">Recado em destaque no site (opcional)</span><input id="dest-recado" class="text-field" type="text" maxlength="240" placeholder="Ex.: Horário provisório até 20/10 — confira as salas de laboratório"></label>
+         <div class="campo-info"><div class="rotulo-com-info"><label class="campo-rotulo" for="dest-recado">Recado em destaque no site (opcional)</label><button class="botao-info" type="button" aria-expanded="false" aria-controls="dest-recado-ajuda" aria-label="O que é: Recado em destaque no site"><i data-lucide="info"></i></button></div><input id="dest-recado" class="text-field" type="text" maxlength="240" placeholder="Ex.: Horário provisório até 20/10 — confira as salas de laboratório"><p id="dest-recado-ajuda" class="ajuda-campo" hidden>Aparece numa faixa amarela com megafone no topo da consulta, para chamar a atenção. Não aparece no seletor nem na impressão. Use para um aviso temporário que todos precisam ler. Ex.: “Horário provisório até 20/10 — confira as salas de laboratório”. Para retirar, apague o texto em “Editar”.</p></div>
         </div>
         <label class="caixa-marcar"><input id="dest-padrao" type="checkbox"> <span>Tornar este o período <strong>atual</strong> (o que abre primeiro no site)</span></label>
         <div id="dest-resumo" class="notice" style="margin-top:1rem" hidden role="status"></div>

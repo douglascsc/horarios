@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009q";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009q";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009r";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009r";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, chaveLeituraDaConfig, PEDE_SENHA_LEITURA, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009q";
-import { gerarArquivoOffline } from "./offline.js?v=20261009q";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009q";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009q";
+} from "./publicar.js?v=20261009r";
+import { gerarArquivoOffline } from "./offline.js?v=20261009r";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009r";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009r";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -221,6 +221,7 @@ async function iniciar() {
   ligarPortao();
   ligarEtapas();
   ligarPortaoAdmin();
+  ligarBotoesInfo();
   $("form-leitura").addEventListener("submit", aoMudarLeitura);
   $("form-leitura-remover").addEventListener("submit", aoRemoverLeitura);
   const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
@@ -1815,6 +1816,28 @@ function dadosParaPublicar() {
   return { ...dadosDaImportacao(), publicadoEm: new Date().toISOString(), revisao: { erros: c.erro, divergencias: c.divergencia, duvidas: c.duvida } };
 }
 
+// campo de texto com um "i" que abre/fecha a explicação logo abaixo
+const AJUDA_OBSERVACAO = "Aparece como uma etiqueta pequena e discreta abaixo do título da consulta, ao passar o mouse sobre o período no seletor e na lista de períodos. Use para uma informação permanente sobre o período. Ex.: “Válido a partir de 15/10”, “Versão revisada”.";
+const AJUDA_RECADO = "Aparece numa faixa amarela com megafone no topo da consulta, para chamar a atenção. Não aparece no seletor nem na impressão. Use para um aviso temporário que todos precisam ler. Ex.: “Horário provisório até 20/10 — confira as salas de laboratório”. Para retirar, apague o texto em “Editar”.";
+function campoComInfo(id, rotulo, ajuda, attrs, classe = "") {
+  return el("div", { class: `campo-info${classe ? " " + classe : ""}` },
+    el("div", { class: "rotulo-com-info" },
+      el("label", { class: "campo-rotulo", for: id, text: rotulo }),
+      el("button", { class: "botao-info", type: "button", "aria-expanded": "false", "aria-controls": id + "-ajuda", "aria-label": "O que é: " + rotulo.replace(" (opcional)", "") }, icone("info"))),
+    el("input", { id, class: "text-field", type: "text", ...attrs }),
+    el("p", { id: id + "-ajuda", class: "ajuda-campo", hidden: true, text: ajuda }));
+}
+function ligarBotoesInfo() {
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".botao-info");
+    if (!b) return;
+    const alvo = document.getElementById(b.getAttribute("aria-controls"));
+    if (!alvo) return;
+    alvo.hidden = !alvo.hidden;
+    b.setAttribute("aria-expanded", String(!alvo.hidden));
+  });
+}
+
 // ---------------------------------------------------------------- períodos publicados (gerenciar)
 let acaoPeriodo = null; // { tipo, id }
 function renderPeriodosAdmin() {
@@ -1854,8 +1877,8 @@ function formAcao(p) {
     el("div", { class: `notice ${tipo === "remover" ? "notice-error" : "notice-info"}` }, icone(tipo === "remover" ? "triangle-alert" : "info"), el("span", { text: textos[tipo] })),
     tipo === "renomear" ? el("div", { class: "form-grade duas" },
       el("label", null, el("span", { class: "campo-rotulo", text: "Nome do período" }), el("input", { id: "acao-nome", class: "text-field", type: "text", maxlength: "40", value: p.nome, required: true })),
-      el("label", null, el("span", { class: "campo-rotulo", text: "Observação (opcional)" }), el("input", { id: "acao-descricao", class: "text-field", type: "text", maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" })),
-      el("label", { class: "campo-largo" }, el("span", { class: "campo-rotulo", text: "Recado em destaque no site (opcional)" }), el("input", { id: "acao-recado", class: "text-field", type: "text", maxlength: "240", value: p.recado || "", placeholder: "Ex.: Horário provisório até 20/10" })),
+      campoComInfo("acao-descricao", "Observação exibida no site (opcional)", AJUDA_OBSERVACAO, { maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" }),
+      campoComInfo("acao-recado", "Recado em destaque no site (opcional)", AJUDA_RECADO, { maxlength: "240", value: p.recado || "", placeholder: "Ex.: Horário provisório até 20/10" }, "campo-largo"),
       el("label", null, el("span", { class: "campo-rotulo", text: "Primeiro dia de aula (agenda)" }), el("input", { id: "acao-inicio", class: "text-field", type: "date", value: p.inicioAulas || "" })),
       el("label", null, el("span", { class: "campo-rotulo", text: "Último dia de aula (agenda)" }), el("input", { id: "acao-fim", class: "text-field", type: "date", value: p.fimAulas || "" }))) : null,
     tipo === "remover" ? el("label", { class: "caixa-marcar" }, el("input", { id: "acao-confirmar", type: "checkbox", required: true }), el("span", { text: `Confirmo a remoção de ${p.nome}.` })) : null,

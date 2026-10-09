@@ -478,6 +478,13 @@ body.com-modal { overflow: hidden; }
 .nota-comparacao { margin-top: .35rem; font-size: var(--fs-min); color: #8a5a00; background: #fff6e5; border-radius: .5rem; padding: .2rem .45rem; }
 .resumo-comparacao .estatisticas { margin-top: 0; }
 .campo-largo { grid-column: 1 / -1; }
+.rotulo-com-info { display: flex; align-items: center; gap: .25rem; margin-bottom: .3rem; }
+.rotulo-com-info .campo-rotulo { margin: 0; }
+.botao-info { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border: 0; border-radius: 999px; background: none; color: var(--brand-green); cursor: pointer; }
+.botao-info:hover, .botao-info[aria-expanded="true"] { background: var(--verde-claro); }
+.botao-info .icone { width: 1.05rem; height: 1.05rem; }
+.ajuda-campo { margin: .4rem 0 0; padding: .55rem .75rem; border-radius: .7rem; background: var(--verde-claro); border: 1px solid var(--verde-borda); font-size: .85rem; color: var(--slate-600); }
+@media (pointer: coarse) { .botao-info { width: var(--alvo-toque); height: var(--alvo-toque); margin: -.5rem 0; } }
 .barra-movel { display: none; }
 @media (max-width: 639px) {
   .barra-movel:not([hidden]) {
