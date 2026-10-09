@@ -6,7 +6,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 
 ## Funcionalidades
 
-**Consulta (pública)**
+**Consulta**
 - **Períodos letivos**: até 3 ficam disponíveis ao mesmo tempo (ex.: 2026/2 e 2027/1). Um seletor no topo mostra em qual período você está, e o marcado como *atual* abre primeiro.
 - Busca por texto (disciplina, professor, turma, curso, sala, dia), que aceita vários termos.
 - Filtros gerados a partir dos dados da planilha, sem opções fixas: curso, turma, professor, sala, turno e dia. Podem ser combinados e limpos com um clique.
@@ -16,7 +16,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - Destaque de **hoje**, da aula que está acontecendo **agora** e das que **começam em até 30 min**. Esses destaques se atualizam sozinhos a cada minuto, só com o relógio do aparelho, sem baixar nada de novo.
 - Filtro **Agora**: mostra só as aulas em andamento (turma, professor e sala). Se não houver nenhuma, informa a próxima do dia.
 - Escolher um curso volta a agrupar **por turma**.
-- **Meu horário**: guarda a consulta (ex.: a turma do aluno) neste aparelho, com atalho para abrir de novo.
+- **Meu horário**: guarda a consulta (ex.: o horário do próprio professor) neste aparelho, com atalho para abrir de novo.
 - Aulas EaD ficam num bloco separado.
 - Contagem de períodos: as aulas do **PCP contam em dobro** nos totais e na carga horária. Horários e quadros não mudam. A regra fica em `PESO_POR_CURSO`, em `js/interpretar.js`.
 - No celular, o quadro semanal vira uma lista por dia, sem rolagem horizontal, e os filtros ficam recolhidos num botão.
@@ -39,7 +39,8 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
    Antes de uma substituição, o site mostra qual período será afetado e pede confirmação. Também mostra **o que muda** em relação à versão publicada: aulas novas, alteradas e que saem.
 5. **Prévia** do site com os novos dados, antes de publicar, e **PDF de conferência**: uma capa com o resumo da revisão (destino, comparação, intervalos e pontos a conferir) e o quadro de todas as turmas, marcado "não publicado", para enviar à coordenação. Também é possível informar o primeiro e o último dia de aula, usados no botão "Agenda".
 6. **Publicação com senha**. Se houver erros ou divergências, é preciso confirmar que foram revisados.
-7. **Períodos publicados**: ver, tornar atual, renomear (com observação, ex.: "válido a partir de 15/10") ou remover. Cada ação pede a senha.
+7. **Períodos publicados**: ver, tornar atual, editar (nome, observação como "válido a partir de 15/10" e datas das aulas) ou remover. Cada ação pede a senha. Também é possível baixar a versão offline de tudo o que está publicado.
+8. **Publicar ou não**: o administrador escolhe, a cada planilha, se publica online, se só gera a **versão offline desta planilha** (nada vai para o ar), ou as duas coisas.
 
 ## Como a planilha é interpretada
 
@@ -73,7 +74,7 @@ Cabeçalhos aceitos na tabela de horários (sem diferença entre maiúsculas e a
 - abas renomeadas (`ETM dados`, `Horários - INF`);
 - linhas fora de ordem ou com linhas vazias no meio;
 - um curso novo (é só acrescentar a aba);
-- sem as abas de quadros (nesse caso, cada período é considerado de 45 minutos).
+- sem as abas de quadros (nesse caso, é usada a grade oficial de períodos).
 
 Se faltar uma coluna obrigatória, a revisão mostra **qual coluna falta e os nomes aceitos**. Uma estrutura que o site não entende nunca é publicada em silêncio.
 
@@ -124,7 +125,7 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 - `manifest.webmanifest` e `sw.js`: aplicativo instalável e funcionamento sem internet.
 - `js/app.js`: interface. `css/estilo.css`: visual.
 
-**Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, renomear, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
+**Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, editar, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
 
 **Versão dos arquivos:** `index.html`, `js/app.js`, `js/recursos.js` e `sw.js` usam a mesma versão (`?v=AAAAMMDD…` / `VERSAO`). Ao mudar o código, troque esse número em todos eles, para os navegadores não juntarem código novo com código antigo guardado em cache.
 
