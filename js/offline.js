@@ -58,6 +58,7 @@ export async function gerarArquivoOffline({ versao, arquivos }) {
   // segurança: o arquivo não acessa nada da internet além da fonte do Google
   const csp = q('meta[http-equiv="Content-Security-Policy"]');
   if (csp) csp.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none'");
+  for (const l of doc.querySelectorAll('link[rel="modulepreload"]')) l.remove();
   for (const sel of ["#anti-clickjack", 'script[src*="protecao.js"]', 'link[rel="manifest"]', 'link[rel="apple-touch-icon"]', 'meta[name="apple-mobile-web-app-capable"]', 'meta[name="mobile-web-app-capable"]', 'meta[name="apple-mobile-web-app-title"]']) q(sel)?.remove();
   const icon = q('link[rel="icon"]');
   if (icon) { if (favicon) icon.setAttribute("href", favicon); else icon.remove(); }

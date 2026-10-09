@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009i"></script>
-  <script src="js/icones.js?v=20261009i"></script>
+  <script src="js/protecao.js?v=20261009k"></script>
+  <script src="js/icones.js?v=20261009k"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009i">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009k">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,7 +23,12 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <script type="module" src="js/app.js?v=20261009i"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009k">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009k">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009k">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009k">
+  <link rel="modulepreload" href="js/offline.js?v=20261009k">
+  <script type="module" src="js/app.js?v=20261009k"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -46,6 +51,7 @@
    <div class="accent-disc accent-disc--teal" aria-hidden="true"></div>
 
    <header class="topo">
+    <a id="pular" class="pular" href="#">Pular para os horários</a>
     <div class="container topo-linha">
      <a class="marca" href="#" id="link-inicio">
       <img src="assets/ifsul.png" alt="Instituto Federal Sul-rio-grandense" class="brand-mark">
@@ -56,7 +62,7 @@
      </a>
      <div class="topo-acoes">
       <button id="btn-instalar" class="status-pill verde" type="button" hidden><i data-lucide="download"></i> <span>Instalar app</span></button>
-      <button id="btn-admin" class="status-pill" type="button"><i data-lucide="shield-check"></i> <span>Área do administrador</span></button>
+      <button id="btn-admin" class="status-pill" type="button" aria-label="Área do administrador" title="Área do administrador"><i data-lucide="shield-check"></i> <span class="so-largo">Área do administrador</span></button>
       <span id="status-publicacao" class="status-pill ambar"><span class="ponto" aria-hidden="true"></span> <span id="status-publicacao-texto">Carregando…</span></span>
      </div>
     </div>
@@ -65,7 +71,11 @@
    <main class="container">
 
     <!-- ===================== CONSULTA ===================== -->
-    <section id="view-consulta">
+    <div id="carregando" class="glass-surface carregando" role="status">
+     <span class="spinner spinner-verde" aria-hidden="true"></span>
+     <span>Carregando os horários…</span>
+    </div>
+    <section id="view-consulta" hidden>
      <section class="hero-panel glass-surface reveal">
       <div id="seletor-periodo" class="seletor-periodo" hidden></div>
       <span id="selo-consulta" class="selo">Horários</span>
@@ -83,7 +93,7 @@
         <button id="limpar-busca" class="clear-search focus-ring" type="button" aria-label="Limpar busca" hidden><i data-lucide="x"></i></button>
        </div>
 
-       <button id="btn-filtros" class="botao botao-secundario btn-filtros" type="button" aria-expanded="false" aria-controls="painel-filtros"><i data-lucide="settings"></i> Filtros <span id="btn-filtros-n" class="contador" hidden></span> <i data-lucide="chevron-down" class="chev"></i></button>
+       <button id="btn-filtros" class="botao botao-secundario btn-filtros" type="button" aria-expanded="false" aria-controls="painel-filtros"><i data-lucide="settings"></i> Filtros e exibição <span id="btn-filtros-n" class="contador" hidden></span> <i data-lucide="chevron-down" class="chev"></i></button>
        <div id="painel-filtros" class="filtros">
         <div id="filtro-cursos" class="chips" role="group" aria-label="Filtrar por curso"></div>
         <div class="filtros-grade">
@@ -93,43 +103,43 @@
          <label><span class="campo-rotulo">Turno</span><select id="filtro-turno" class="text-field"></select></label>
         </div>
         <div id="filtro-dias" class="chips" role="group" aria-label="Filtrar por dia"></div>
+        <div class="visao">
+         <span class="campo-rotulo" style="margin:0">Agrupar por</span>
+         <div id="seg-agrupar" class="segmentado" role="group" aria-label="Agrupar por">
+          <button type="button" data-valor="turma" aria-pressed="true">Turma</button>
+          <button type="button" data-valor="professor" aria-pressed="false">Professor</button>
+          <button type="button" data-valor="sala" aria-pressed="false">Sala</button>
+          <button type="button" data-valor="dia" aria-pressed="false">Dia</button>
+         </div>
+         <div id="seg-exibir" class="segmentado" role="group" aria-label="Exibir como">
+          <button type="button" data-valor="grade" aria-pressed="true"><i data-lucide="layout-grid"></i> Semana</button>
+          <button type="button" data-valor="lista" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
+         </div>
+         <label id="campo-ordenar" hidden><span class="sr-only">Ordenar por</span>
+          <select id="ordenar" class="text-field campo-ordenar">
+           <option value="horario">Ordenar: dia e horário</option>
+           <option value="disciplina">Ordenar: disciplina</option>
+           <option value="turma">Ordenar: turma</option>
+           <option value="professor">Ordenar: professor</option>
+           <option value="sala">Ordenar: sala</option>
+          </select>
+         </label>
+        </div>
        </div>
 
        <div class="barra-resultado">
         <p id="contagem" class="contagem" aria-live="polite"></p>
-        <div class="grupo-acoes">
-         <button id="btn-meu-horario" class="botao-link" type="button" aria-pressed="false" hidden><i data-lucide="star"></i> <span id="btn-meu-horario-texto">Salvar como meu horário</span></button>
+        <div class="grupo-acoes acoes-resultado">
          <button id="btn-limpar-filtros" class="botao-link" type="button" hidden><i data-lucide="undo-2"></i> Limpar filtros</button>
+         <button id="btn-meu-horario" class="botao-link" type="button" aria-pressed="false" hidden><i data-lucide="star"></i> <span id="btn-meu-horario-texto">Salvar como meu horário</span></button>
+         <button id="btn-imprimir-todos" class="botao-link" type="button" hidden><i data-lucide="printer"></i> <span id="btn-imprimir-todos-texto">Imprimir</span></button>
+         <button id="btn-offline" class="botao-link" type="button" title="Um arquivo único que abre com dois cliques, sem internet (pendrive, pasta do Drive no computador). Só consulta; baixe de novo quando o horário mudar."><i data-lucide="download"></i> <span>Versão offline</span></button>
         </div>
-       </div>
-       <div class="visao" style="margin-top:.75rem">
-        <span class="campo-rotulo" style="margin:0">Agrupar por</span>
-        <div id="seg-agrupar" class="segmentado" role="group" aria-label="Agrupar por">
-         <button type="button" data-valor="turma" aria-pressed="true">Turma</button>
-         <button type="button" data-valor="professor" aria-pressed="false">Professor</button>
-         <button type="button" data-valor="sala" aria-pressed="false">Sala</button>
-         <button type="button" data-valor="dia" aria-pressed="false">Dia</button>
-        </div>
-        <div id="seg-exibir" class="segmentado" role="group" aria-label="Exibir como">
-         <button type="button" data-valor="grade" aria-pressed="true"><i data-lucide="layout-grid"></i> Semana</button>
-         <button type="button" data-valor="lista" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
-        </div>
-        <label id="campo-ordenar" hidden><span class="sr-only">Ordenar por</span>
-         <select id="ordenar" class="text-field" style="min-height:40px;padding-top:.35rem;padding-bottom:.35rem">
-          <option value="horario">Ordenar: dia e horário</option>
-          <option value="disciplina">Ordenar: disciplina</option>
-          <option value="turma">Ordenar: turma</option>
-          <option value="professor">Ordenar: professor</option>
-          <option value="sala">Ordenar: sala</option>
-         </select>
-        </label>
-        <button id="btn-imprimir-todos" class="botao-link" type="button" hidden><i data-lucide="printer"></i> <span id="btn-imprimir-todos-texto">Imprimir</span></button>
-        <button id="btn-offline" class="botao-link" type="button" title="Um arquivo único que abre com dois cliques, sem internet (pendrive, pasta do Drive no computador). Só consulta; baixe de novo quando o horário mudar."><i data-lucide="download"></i> <span>Baixar versão offline</span></button>
        </div>
       </div>
      </section>
 
-     <div id="resultados" class="grupos" aria-live="polite"></div>
+     <div id="resultados" class="grupos" tabindex="-1" aria-label="Horários"></div>
     </section>
 
     <!-- ===================== ADMINISTRADOR ===================== -->

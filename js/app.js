@@ -3,14 +3,14 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009i";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009i";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009k";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009k";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009i";
-import { gerarArquivoOffline } from "./offline.js?v=20261009i";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009i";
+} from "./publicar.js?v=20261009k";
+import { gerarArquivoOffline } from "./offline.js?v=20261009k";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009k";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -139,6 +139,15 @@ async function iniciar() {
   window.addEventListener("afterprint", aposImprimir);
   ligarModal();
   ligarAplicativo();
+  $("pular").addEventListener("click", (e) => {
+    e.preventDefault();
+    const alvo = !$("view-admin").hidden ? $("view-admin") : $("resultados");
+    alvo.setAttribute("tabindex", "-1");
+    alvo.focus();
+    alvo.scrollIntoView({ block: "start" });
+  });
+  // planilha enviada e ainda não publicada: avisa antes de sair/recarregar
+  window.addEventListener("beforeunload", (e) => { if (estado.importacao) { e.preventDefault(); e.returnValue = ""; } });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("view-consulta").hidden) renderResultados(); });
   // "Agora" e "começa em X min" acompanham o relógio
   setInterval(() => {
@@ -163,7 +172,8 @@ function atualizarStatus() {
   if (!p || !d) { pill.className = "status-pill ambar"; txt.textContent = periodos().length ? "Carregando…" : "Sem horários publicados"; return; }
   pill.className = "status-pill verde";
   const quando = dataBr(d.publicadoEm || p.publicadoEm);
-  txt.textContent = `${p.nome}${quando ? " · atualizado em " + quando : ""}`;
+  // no celular: "2026/2 · 09/10/2026"; em telas maiores: "… · atualizado em …"
+  txt.replaceChildren(p.nome, quando ? el("span", { class: "so-curto", text: ` · ${quando}` }) : "", quando ? el("span", { class: "so-largo", text: ` · atualizado em ${quando}` }) : "");
 }
 
 // ================================================================= APLICATIVO
@@ -260,11 +270,13 @@ function abrirModal(titulo, ...conteudo) {
   $("modal-corpo").replaceChildren(...conteudo.filter((x) => x !== null && x !== undefined && x !== false));
   $("modal").hidden = false;
   document.body.classList.add("com-modal");
+  document.querySelector(".app-wrapper").inert = true; // Tab e leitor de tela ficam só na janela
   setTimeout(() => ($("modal-corpo").querySelector("button, input, a") || $("modal-fechar")).focus(), 0);
 }
 function fecharModal() {
   $("modal").hidden = true;
   document.body.classList.remove("com-modal");
+  document.querySelector(".app-wrapper").inert = false;
   if (focoAntesModal && focoAntesModal.focus) focoAntesModal.focus();
 }
 function baixarArquivo(blob, nome) {
@@ -314,6 +326,7 @@ function aposImprimir() {
 
 // ================================================================= CONSULTA
 function mostrarConsulta() {
+  $("carregando").hidden = true;
   $("view-admin").hidden = true;
   $("view-consulta").hidden = false;
   $("barra-previa").hidden = !estado.previa;
@@ -465,6 +478,7 @@ function renderConsulta() {
   const vazioTotal = !dados || !dados.aulas.length;
   $("bloco-consulta").hidden = vazioTotal;
   $("selo-consulta").textContent = estado.previa ? "Horários · prévia" : p ? `Horários ${p.nome}` : "Horários";
+  $("selo-consulta").hidden = !$("seletor-periodo").hidden; // o seletor já mostra o período
   $("descricao-periodo").textContent = !estado.previa && p && p.descricao ? p.descricao : "";
   $("descricao-periodo").hidden = !$("descricao-periodo").textContent;
   if (vazioTotal) {
@@ -494,10 +508,10 @@ function renderConsulta() {
 
   // turmas limitadas ao curso escolhido
   const turmas = f.curso ? idx.turmas.filter((t) => idx.aulas.some((a) => a.turma === t && a.curso === f.curso)) : idx.turmas;
-  f.turma = preencherSelect($("filtro-turma"), turmas, f.turma, "Todas as turmas");
-  f.professor = preencherSelect($("filtro-professor"), idx.professores, f.professor, "Todos os professores");
-  f.sala = preencherSelect($("filtro-sala"), idx.salas, f.sala, "Todas as salas");
-  f.turno = preencherSelect($("filtro-turno"), idx.turnos, f.turno, "Todos os turnos", (t) => NOME_TURNO[t]);
+  f.turma = preencherSelect($("filtro-turma"), turmas, f.turma, "Todas");
+  f.professor = preencherSelect($("filtro-professor"), idx.professores, f.professor, "Todos");
+  f.sala = preencherSelect($("filtro-sala"), idx.salas, f.sala, "Todas");
+  f.turno = preencherSelect($("filtro-turno"), idx.turnos, f.turno, "Todos", (t) => NOME_TURNO[t]);
 
   const diasEl = $("filtro-dias");
   if (!idx.dias.includes(f.dia)) f.dia = "";
@@ -636,7 +650,8 @@ function renderResultados() {
   const LIMITE = 60;
   $("btn-imprimir-todos").hidden = false;
   $("btn-offline").hidden = !!OFFLINE || estado.previa;
-  $("btn-imprimir-todos-texto").textContent = grupos.length > 1 ? `Imprimir os ${Math.min(grupos.length, LIMITE)} quadros (um por página)` : "Imprimir";
+  $("btn-imprimir-todos-texto").textContent = grupos.length > 1 ? `Imprimir ${Math.min(grupos.length, LIMITE)} quadros` : "Imprimir";
+  $("btn-imprimir-todos").title = grupos.length > 1 ? "Um quadro por página, em A4 deitada" : "";
   const frag = grupos.slice(0, LIMITE).map((g) => renderGrupo(g, idx, dados));
   if (grupos.length > LIMITE) frag.push(el("p", { class: "notice notice-info", text: `Mostrando ${LIMITE} de ${grupos.length} grupos. Use a busca ou os filtros para encontrar os demais.` }));
   res.replaceChildren(...frag);
@@ -908,6 +923,7 @@ function alternarMeuHorario() {
 
 // ================================================================= ADMIN
 function mostrarAdmin() {
+  $("carregando").hidden = true;
   $("view-consulta").hidden = true;
   $("view-admin").hidden = false;
   $("barra-previa").hidden = true;
