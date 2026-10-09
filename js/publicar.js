@@ -148,6 +148,7 @@ function resumoDoPeriodo(id, nome, descricao, dados, datas) {
   return {
     id, nome, descricao: descricao || "", arquivo: arquivoDoPeriodo(id),
     inicioAulas: dataValida(datas && datas.inicio), fimAulas: dataValida(datas && datas.fim),
+    recado: String((datas && datas.recado) || "").trim().slice(0, 240),
     publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length,
     planilha: dados.arquivo || "", revisao: dados.revisao || null,
   };
@@ -182,7 +183,7 @@ export async function alterarPeriodos(config, senha, op) {
     }
     if (saiId !== id && acha(id)) throw new ErroPublicacao(`Já existe outro período chamado "${acha(id).nome}". Use outro nome.`);
     const dados = { ...op.dados, periodo: { id, nome }, publicadoEm: new Date().toISOString() };
-    const entrada = resumoDoPeriodo(id, nome, op.descricao, dados, op.datas);
+    const entrada = resumoDoPeriodo(id, nome, op.descricao, dados, { ...(op.datas || {}), recado: op.recado });
     let pos = lista.length;
     const nomeSai = saiId ? acha(saiId).nome : "";
     if (saiId) {
@@ -220,6 +221,7 @@ export async function alterarPeriodos(config, senha, op) {
     p.nome = nome;
     p.descricao = String(op.descricao || "").trim();
     if (op.datas) { p.inicioAulas = dataValida(op.datas.inicio); p.fimAulas = dataValida(op.datas.fim); }
+    if (op.recado !== undefined) p.recado = String(op.recado || "").trim().slice(0, 240);
     // o id (e o arquivo) continuam os mesmos: links antigos seguem valendo
   } else throw new ErroPublicacao("Operação desconhecida.");
 
