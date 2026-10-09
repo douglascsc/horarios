@@ -402,11 +402,33 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
 .pendencia .local { display: block; font-size: .72rem; color: var(--slate-500); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pendencia-acoes { display: flex; flex-wrap: wrap; gap: .5rem; }
 .so-impressao { display: none; }
+.logo-impressao { display: none; }
+.grupo-titulo { display: flex; align-items: center; gap: 1rem; min-width: 0; }
 .dia-especial-campo { display: block; margin-top: .6rem; max-width: 22rem; }
 .dia-especial-campo .campo-rotulo { color: #204f99; }
 .cab-especial { display: block; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
 .nota-especial { display: flex; align-items: flex-start; gap: .4rem; margin-top: .75rem; font-size: .8rem; color: var(--slate-600); }
 .nota-especial .icone { color: var(--teal); margin-top: .15rem; }
+
+/* ---------- sem internet / mudanças */
+.barra-offline { position: sticky; top: 0; z-index: 45; background: #f59e0b; color: #451a03; font-size: .85rem; font-weight: 600; }
+.barra-offline .container { padding-top: .5rem; padding-bottom: .5rem; text-align: center; }
+.aviso-mudancas { margin-top: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .6rem; border-radius: .9rem; padding: .45rem .8rem; background: #fff8e6; border: 1px solid #f5d48a; color: #7c4a03; font-size: .85rem; }
+.aviso-mudancas .icone { color: #d97706; }
+.aviso-mudancas .botao-link { min-height: 36px; color: #92400e; font-weight: 700; }
+.pilula-mudou { display: inline-flex; border-radius: 999px; padding: .05rem .45rem; font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: #fde68a; color: #78350f; cursor: help; }
+.nota-mudanca { display: flex; align-items: flex-start; gap: .4rem; margin-top: .75rem; font-size: .8rem; color: #7c4a03; background: #fffbeb; border: 1px dashed #f5d48a; border-radius: .8rem; padding: .5rem .7rem; }
+.nota-mudanca .icone { color: #d97706; margin-top: .15rem; }
+
+/* ---------- janela (modal) */
+.modal-fundo { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: rgba(8, 21, 40, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.modal-caixa { width: min(100%, 520px); max-height: calc(100vh - 2rem); overflow-y: auto; background: #fff; border-radius: 26px; padding: 1.5rem; box-shadow: 0 32px 90px rgba(7, 18, 36, .34); animation: modal-in .24s ease both; }
+.modal-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+.modal-topo .botao-link { min-height: 40px; min-width: 40px; justify-content: center; }
+.modal-topo .botao-link .icone { width: 1.2rem; height: 1.2rem; }
+body.com-modal { overflow: hidden; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+.capa-conferencia { display: none; }
 
 /* ---------- impressão: um quadro por página, ajustado à folha A4 deitada.
    O botão de um quadro imprime só ele; "Imprimir" na barra imprime todos. */
@@ -423,7 +445,10 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
   .grupo:first-child, body.imprimindo-um .grupo.imprimir-este { break-before: auto; page-break-before: auto; }
   .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
   .grupo-topo { padding-bottom: 2mm; margin-bottom: 1mm; border-bottom: 1.5pt solid #2b7a40; }
-  .grupo-nome { font-size: 16pt; }
+  .grupo-nome { font-size: 24pt; line-height: 1.05; }
+  .logo-impressao { display: block; height: 15mm; width: auto; }
+  .grupo-titulo { gap: 4mm; }
+  .grupo-tipo { color: #2b7a40 !important; font-weight: 800; }
   .grupo-tipo, .grupo-meta { font-size: 8pt; }
   .so-impressao { display: block; font-size: 8pt; color: #475569; }
   .semana { display: grid !important; gap: 1mm; margin-top: 2mm; }
@@ -449,4 +474,22 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
   .lista-aulas { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 1mm; }
   .lista-aulas .aula + .aula { margin-top: 0; }
   .aula.agora { box-shadow: none; }
+}
+
+/* capa do PDF de conferência */
+@media print {
+  body.conferencia .capa-conferencia { display: block !important; break-after: page; page-break-after: always; color: #000; font-family: "DM Sans", Arial, sans-serif; font-size: 10pt; }
+  body.conferencia .grupo:first-child { break-before: auto; }
+  .capa-selo { display: inline-block; border: 1.5pt solid #b42318; color: #b42318; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 1mm 3mm; border-radius: 2mm; font-size: 9pt; }
+  .capa-conferencia h1 { font-size: 20pt; margin: 3mm 0 1mm; }
+  .capa-conferencia h2 { font-size: 12pt; margin: 4mm 0 2mm; }
+  .capa-conferencia p { margin: 1.5mm 0; }
+  .capa-tabela { border-collapse: collapse; margin: 3mm 0; }
+  .capa-tabela th, .capa-tabela td { border: .5pt solid #999; padding: 1mm 3mm; text-align: left; }
+  .capa-tabela th { background: #eef6ec; }
+  .capa-lista { margin: 0; padding-left: 6mm; font-size: 8.5pt; }
+  .capa-lista li { margin-bottom: 1mm; break-inside: avoid; }
+  .capa-lista em { color: #555; }
+  .barra-offline, .modal-fundo, .aviso-mudancas, .nota-mudanca { display: none !important; }
+  .pilula-mudou { border: .5pt solid #78350f; }
 }

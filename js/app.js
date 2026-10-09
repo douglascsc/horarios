@@ -3,12 +3,13 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009b";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009b";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009c";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009c";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009b";
+} from "./publicar.js?v=20261009c";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009c";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -34,7 +35,7 @@ const guardar = {
   gravar(k, v) { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } },
   apagar(k) { try { localStorage.removeItem(k); } catch { /* sem armazenamento */ } },
 };
-const FILTROS_VAZIOS = () => ({ q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "", agora: "" });
+const FILTROS_VAZIOS = () => ({ q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "", agora: "", mudou: "" });
 
 // ---------------------------------------------------------------- estado
 const estado = {
@@ -54,7 +55,7 @@ const periodoPorId = (id) => periodos().find((p) => p.id === id);
 const dadosAtivos = () => (estado.previa && estado.importacao ? dadosDaImportacao() : estado.dadosPorPeriodo.get(estado.periodoId) || null);
 
 // ---------------------------------------------------------------- endereço (#)
-const CHAVES_URL = { q: "q", curso: "curso", turma: "turma", professor: "prof", sala: "sala", turno: "turno", dia: "dia", agora: "agora" };
+const CHAVES_URL = { q: "q", curso: "curso", turma: "turma", professor: "prof", sala: "sala", turno: "turno", dia: "dia", agora: "agora", mudou: "mudou" };
 function lerEndereco() {
   const h = location.hash.replace(/^#\/?/, "");
   if (h === "admin" || h.startsWith("admin")) return { admin: true };
@@ -125,7 +126,9 @@ async function iniciar() {
   atualizarConfigUI();
   await aoMudarEndereco();
   window.addEventListener("hashchange", aoMudarEndereco);
-  window.addEventListener("afterprint", () => document.body.classList.remove("imprimindo-um", "imprimindo-todos"));
+  window.addEventListener("afterprint", aposImprimir);
+  ligarModal();
+  ligarAplicativo();
   document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("view-consulta").hidden) renderResultados(); });
   // "Agora" e "começa em X min" acompanham o relógio
   setInterval(() => {
@@ -151,6 +154,100 @@ function atualizarStatus() {
   pill.className = "status-pill verde";
   const quando = dataBr(d.publicadoEm || p.publicadoEm);
   txt.textContent = `${p.nome}${quando ? " · atualizado em " + quando : ""}`;
+}
+
+// ================================================================= APLICATIVO
+// Instalação (ícone na tela inicial) e funcionamento sem internet (sw.js).
+let pedidoInstalar = null;
+function ligarAplicativo() {
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* sem modo offline */ });
+  }
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pedidoInstalar = e; $("btn-instalar").hidden = false; });
+  window.addEventListener("appinstalled", () => { $("btn-instalar").hidden = true; pedidoInstalar = null; });
+  $("btn-instalar").addEventListener("click", async () => {
+    if (!pedidoInstalar) return;
+    pedidoInstalar.prompt();
+    await pedidoInstalar.userChoice.catch(() => null);
+    pedidoInstalar = null;
+    $("btn-instalar").hidden = true;
+  });
+  const situacao = () => {
+    const off = !navigator.onLine;
+    $("barra-offline").hidden = !off;
+    const p = periodoPorId(estado.periodoId);
+    $("barra-offline-texto").textContent = off
+      ? `Sem internet: mostrando os horários guardados neste aparelho${p && p.publicadoEm ? " (atualizados em " + dataBr(p.publicadoEm) + ")" : ""}. A publicação só funciona com internet.`
+      : "";
+  };
+  window.addEventListener("online", situacao);
+  window.addEventListener("offline", situacao);
+  situacao();
+}
+
+// ================================================================= JANELA (modal)
+function ligarModal() {
+  $("modal-fechar").addEventListener("click", fecharModal);
+  $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) fecharModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("modal").hidden) fecharModal(); });
+}
+let focoAntesModal = null;
+function abrirModal(titulo, ...conteudo) {
+  focoAntesModal = document.activeElement;
+  $("modal-titulo").textContent = titulo;
+  $("modal-corpo").replaceChildren(...conteudo);
+  $("modal").hidden = false;
+  document.body.classList.add("com-modal");
+  setTimeout(() => ($("modal-corpo").querySelector("button, input, a") || $("modal-fechar")).focus(), 0);
+}
+function fecharModal() {
+  $("modal").hidden = true;
+  document.body.classList.remove("com-modal");
+  if (focoAntesModal && focoAntesModal.focus) focoAntesModal.focus();
+}
+function baixarArquivo(blob, nome) {
+  const a = el("a", { href: URL.createObjectURL(blob), download: nome });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const nomeArquivo = (t) => normalizar(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "horario";
+
+const nomeDoGrupo = (tipo, chave) => (tipo === "turma" ? `Turma ${chave}` : tipo === "sala" ? `Sala ${chave}` : chave);
+
+// ---- agenda (.ics)
+function segundaDestaSemana() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; }
+const isoData = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function abrirAgenda(tipo, chave, aulas) {
+  const p = periodoPorId(estado.periodoId);
+  const presenciais = aulas.filter((a) => a.dia !== "ead");
+  const ini0 = p && p.inicioAulas ? p.inicioAulas : isoData(segundaDestaSemana());
+  const fim0 = p && p.fimAulas ? p.fimAulas : isoData(new Date(dataDeTexto(ini0).getTime() + 18 * 7 * 86400000));
+  const ini = el("input", { class: "text-field", type: "date", value: ini0, required: true });
+  const fim = el("input", { class: "text-field", type: "date", value: fim0, required: true });
+  const msg = el("p", { class: "texto-pequeno", role: "status" });
+  const nomeCal = `${nomeDoGrupo(tipo, chave)}${p ? " — " + p.nome : ""}`;
+  abrirModal(`Agenda — ${nomeDoGrupo(tipo, chave)}`,
+    el("p", { class: "subtitulo", style: "margin-top:0", text: `Baixe um arquivo com as ${plural(presenciais.length, "aula", "aulas")} da semana, repetindo toda semana entre as datas abaixo. Abra-o no celular, ou importe no Google Agenda (Configurações → Importar).` }),
+    p && p.inicioAulas ? null : el("p", { class: "texto-pequeno", text: "As datas do período não foram informadas pela coordenação; confira antes de baixar." }),
+    el("div", { class: "form-grade duas" },
+      el("label", null, el("span", { class: "campo-rotulo", text: "De" }), ini),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Até" }), fim)),
+    aulas.length > presenciais.length ? el("p", { class: "texto-pequeno", style: "margin-top:.5rem", text: `Aulas EaD (${aulas.length - presenciais.length}) não entram na agenda, porque não têm dia fixo.` }) : null,
+    el("div", { class: "linha-acoes" },
+      el("button", { type: "button", class: "botao botao-primario", onclick: () => {
+        if (!ini.value || !fim.value || ini.value > fim.value) { msg.textContent = "Confira as datas: o início precisa ser antes do fim."; return; }
+        const r = gerarIcs({ aulas: presenciais, nomeCalendario: nomeCal, inicio: ini.value, fim: fim.value, idBase: `${estado.periodoId}-${nomeArquivo(chave)}` });
+        baixarArquivo(new Blob([r.texto], { type: "text/calendar;charset=utf-8" }), `horario-${nomeArquivo(chave)}.ics`);
+        msg.textContent = `Arquivo baixado com ${plural(r.eventos, "aula semanal", "aulas semanais")}.`;
+      } }, icone("calendar-days"), "Baixar para a agenda (.ics)")),
+    msg);
+}
+
+// ---- impressão (fim): limpa os modos especiais
+function aposImprimir() {
+  const conferencia = document.body.classList.contains("conferencia");
+  document.body.classList.remove("imprimindo-um", "imprimindo-todos", "conferencia");
+  if (conferencia) { estado.previa = false; location.hash = "admin"; }
 }
 
 // ================================================================= CONSULTA
@@ -357,12 +454,26 @@ function renderConsulta() {
     ...idx.dias.map((d) => chip(NOME_DIA[d] + (d === hoje ? " (hoje)" : ""), f.dia === d, () => { f.dia = f.dia === d ? "" : d; f.agora = ""; gravarEndereco(); renderConsulta(); })),
   );
 
+  // aviso de mudanças recentes + filtro "Mudanças"
+  const recentes = mudancasRecentes(dados);
+  if (!recentes) f.mudou = "";
+  const nMud = recentes ? idx.aulas.filter((a) => a.mudou).length : 0, nSaiu = recentes ? (dados.mudancas.removidas || []).length : 0;
+  const aviso = $("aviso-mudancas");
+  aviso.hidden = !recentes || (!nMud && !nSaiu);
+  if (!aviso.hidden) {
+    aviso.replaceChildren(icone("refresh-cw"), el("span", null,
+      el("strong", { text: `Horário atualizado em ${dataBr(dados.mudancas.em)}: ` }),
+      [nMud ? plural(nMud, "aula nova ou alterada", "aulas novas ou alteradas") : "", nSaiu ? `${plural(nSaiu, "aula saiu", "aulas saíram")} do horário` : ""].filter(Boolean).join(" e "), ". "),
+      el("button", { type: "button", class: "botao-link", "aria-pressed": String(!!f.mudou), onclick: () => { f.mudou = f.mudou ? "" : "1"; if (f.mudou) { estado.exibir = "lista"; f.agora = ""; } gravarEndereco(); renderConsulta(); } }, f.mudou ? "Ver tudo" : "Ver só as mudanças"));
+  }
+
   // título conforme a escolha
   let titulo = "Consulte os horários", desc = "Pesquise ou filtre por curso, turma, professor, sala, turno e dia.";
   if (f.turma) { titulo = `Turma ${f.turma}`; desc = "Horário semanal da turma."; }
   else if (f.professor) { titulo = f.professor; desc = "Horário semanal do professor."; }
   else if (f.sala) { titulo = `Sala ${f.sala}`; desc = "Ocupação semanal da sala."; }
   else if (f.curso) { titulo = `Curso ${f.curso}`; desc = "Turmas do curso. Escolha uma turma para ver só o horário dela."; }
+  if (f.mudou) { titulo = "Mudanças recentes"; desc = `Aulas novas ou alteradas na atualização de ${dataBr(dados.mudancas.em)}${dados.mudancas.de ? " (comparado com a versão anterior)" : ""}.`; }
   if (f.agora) { titulo = f.turma || f.professor || f.sala || f.curso ? `${titulo} — agora` : "Acontecendo agora"; desc = `Aulas em andamento às ${hhmm(new Date().getHours() * 60 + new Date().getMinutes())}. A lista se atualiza sozinha.`; }
   $("titulo-consulta").textContent = titulo;
   $("descricao-consulta").textContent = desc;
@@ -378,7 +489,7 @@ function renderConsulta() {
   $("ordenar").value = estado.ordenar;
 
   // celular: botão "Filtros" mostra quantos estão ativos
-  const nAtivos = ["curso", "turma", "professor", "sala", "turno", "dia", "agora"].filter((k) => f[k]).length;
+  const nAtivos = ["curso", "turma", "professor", "sala", "turno", "dia", "agora", "mudou"].filter((k) => f[k]).length;
   $("btn-filtros-n").textContent = nAtivos ? String(nAtivos) : "";
   $("btn-filtros-n").hidden = !nAtivos;
   renderResultados();
@@ -399,6 +510,7 @@ function filtrar(idx) {
     (!f.turno || a.turno === f.turno) &&
     (!f.dia || a.dia === f.dia) &&
     (!f.agora || situacaoAgora(a)?.agora) &&
+    (!f.mudou || !!a.mudou) &&
     termos.every((t) => a.busca.includes(t)));
 }
 
@@ -512,19 +624,38 @@ function renderGrupo(g, idx, dados) {
   if (tipo !== "dia" && estado.filtros[tipo] !== g.chave && !["Sem professor", "Sem sala", "EaD"].includes(g.chave)) {
     acoes.append(el("button", { type: "button", class: "botao-link", onclick: () => { estado.filtros[tipo] = g.chave; gravarEndereco(); renderConsulta(); window.scrollTo({ top: 0, behavior: "smooth" }); } }, icone("search"), "Só esta"));
   }
+  const especial = ["Sem professor", "Sem sala", "EaD"].includes(g.chave);
+  if (tipo !== "dia" && !especial && !estado.previa) {
+    if (g.aulas.some((a) => a.dia !== "ead")) acoes.append(el("button", { type: "button", class: "botao-link", title: "Colocar este horário na agenda do celular", onclick: () => abrirAgenda(tipo, g.chave, g.aulas) }, icone("calendar-days"), "Agenda"));
+  }
   acoes.append(el("button", { type: "button", class: "botao-link", onclick: () => imprimir(secao) }, icone("printer"), "Imprimir"));
 
   const corpo = estado.exibir === "grade" && tipo !== "dia" ? renderSemana(g.aulas, idx) : renderLista(g.aulas);
+  const saiu = removidasRecentes(dados).filter((a) => (tipo === "turma" && a.turma === g.chave) || (tipo === "professor" && (a.professores || []).includes(g.chave))
+    || (tipo === "sala" && (a.sala || "").split("/").map((x) => x.trim()).includes(g.chave)) || (tipo === "dia" && a.dia === g.chave));
+  if (saiu.length) corpo.append(el("div", { class: "nota-mudanca" }, icone("info"),
+    el("span", null, el("strong", { text: `Saiu na atualização de ${dataBr(dados.mudancas.em)}: ` }),
+      saiu.map((a) => `${a.disciplina} (${a.turma}, ${NOME_DIA[a.dia]} ${a.inicio}–${a.fim})`).join("; "), ".")));
   secao.append(
     el("div", { class: "grupo-topo" },
-      el("div", null, el("div", { class: "grupo-tipo", text: TIPO_GRUPO[tipo] }), el("h3", { class: "grupo-nome", text: nome }), el("div", { class: "grupo-meta", text: meta }),
-        el("div", { class: "so-impressao" })),
+      el("div", { class: "grupo-titulo" },
+        el("img", { src: "assets/ifsul.png", alt: "", class: "logo-impressao" }),
+        el("div", null, el("div", { class: "grupo-tipo", text: { turma: "Horário da turma", professor: "Horário do(a) professor(a)", sala: "Ocupação da sala", dia: "Dia" }[tipo] }), el("h3", { class: "grupo-nome", text: nome }), el("div", { class: "grupo-meta", text: meta }),
+          el("div", { class: "so-impressao" }))),
       acoes),
     corpo);
   return secao;
 }
 
 function diaDeHoje() { return [null, "seg", "ter", "qua", "qui", "sex", "sab"][new Date().getDay()]; }
+// "Mudou recentemente": até DIAS_DESTAQUE_MUDANCA dias depois da atualização
+const DIAS_DESTAQUE_MUDANCA = 14;
+function mudancasRecentes(dados) {
+  if (!dados || !dados.mudancas || !dados.mudancas.em || estado.previa) return false;
+  return Date.now() - new Date(dados.mudancas.em).getTime() < DIAS_DESTAQUE_MUDANCA * 86400000;
+}
+function removidasRecentes(dados) { return mudancasRecentes(dados) ? dados.mudancas.removidas || [] : []; }
+
 // "agora" (em andamento) ou minutos até começar (até 30 min antes), só
 // no período atual e no dia de hoje
 function situacaoAgora(a) {
@@ -553,7 +684,8 @@ function cartaoAula(a, { comDia = false } = {}) {
       icone("clock"), `${a.inicio}–${a.fim}`,
       el("span", { class: "qtd-periodos", text: txt }),
       agora ? el("span", { class: "pilula-agora", title: `Termina em ${sit.resta} min`, text: "Agora" }) : null,
-      sit && !sit.agora ? el("span", { class: "pilula-em-breve", text: `começa em ${sit.falta} min` }) : null),
+      sit && !sit.agora ? el("span", { class: "pilula-em-breve", text: `começa em ${sit.falta} min` }) : null,
+      a.mudou && mudancasRecentes(dadosAtivos()) ? el("span", { class: "pilula-mudou", title: a.mudou === "alterada" && a.antes ? `Antes: ${a.antes}` : "Aula nova neste horário", text: a.mudou === "alterada" ? "mudou" : "nova" }) : null),
     el("div", { class: "aula-disc", text: a.disciplina }),
     meta);
 }
@@ -684,6 +816,7 @@ function descricaoFiltros(f) {
   if (f.dia) partes.push(NOME_DIA[f.dia]);
   if (f.q) partes.push(`"${f.q}"`);
   if (f.agora) partes.push("Agora");
+  if (f.mudou) partes.push("Mudanças");
   return partes.join(" · ");
 }
 function lerMeu() { try { return JSON.parse(guardar.ler(CHAVE_MEU) || "null"); } catch { return null; } }
@@ -754,6 +887,8 @@ function ligarAdmin() {
     mostrarConsulta();
     window.scrollTo({ top: 0 });
   });
+  $("btn-pdf-conferencia").addEventListener("click", pdfConferencia);
+  $("btn-previa-pdf").addEventListener("click", pdfConferencia);
   $("btn-baixar-json").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(dadosParaPublicar(), null, 1)], { type: "application/json" });
     const a = el("a", { href: URL.createObjectURL(blob), download: `horarios-${idDoPeriodo(nomeDestino()) || "periodo"}.json` });
@@ -939,6 +1074,9 @@ function prepararDestino(r) {
   const alvo = periodoPorId($("dest-alvo").value);
   $("dest-nome-subst").value = alvo ? alvo.nome : "";
   $("dest-descricao").value = "";
+  const base = igual || null;
+  $("dest-inicio-aulas").value = base && base.inicioAulas ? base.inicioAulas : "";
+  $("dest-fim-aulas").value = base && base.fimAulas ? base.fimAulas : "";
   $("dest-padrao").checked = !ps.length;
   $("dest-confirmar").checked = false;
   $("dest-alvo").dataset.anterior = $("dest-alvo").value;
@@ -1054,15 +1192,9 @@ async function renderComparacao() {
   if (periodoQueSai()?.id !== pedido) return;
   const antigos = estado.dadosPorPeriodo.get(sai.id);
   if (!antigos) { box.replaceChildren(el("p", { class: "texto-pequeno", text: `Não foi possível carregar ${sai.nome} para comparar.` })); return; }
-  const chave = (a) => [a.turma, a.dia, a.inicio, normalizar(a.disciplina)].join("|");
   const desc = (a) => `${a.turma} · ${NOME_DIA[a.dia]} ${a.inicio}–${a.fim} · ${a.disciplina}`;
-  const detalhe = (a) => `${(a.professores || []).join(", ") || "sem professor"}${a.sala ? ", sala " + a.sala : ""}`;
-  const mapaA = new Map(antigos.aulas.map((a) => [chave(a), a]));
-  const mapaN = new Map(estado.importacao.dados.aulas.map((a) => [chave(a), a]));
-  const novas = [...mapaN].filter(([k]) => !mapaA.has(k)).map(([, a]) => a);
-  const removidas = [...mapaA].filter(([k]) => !mapaN.has(k)).map(([, a]) => a);
-  const mudadas = [...mapaN].filter(([k, a]) => mapaA.has(k) && (detalhe(a) !== detalhe(mapaA.get(k)) || a.fim !== mapaA.get(k).fim)).map(([k, a]) => [mapaA.get(k), a]);
-  const iguais = mapaN.size - novas.length - mudadas.length;
+  const detalhe = detalheAula;
+  const { novas, removidas, mudadas, iguais } = compararVersoes(antigos.aulas, estado.importacao.dados.aulas);
   const bloco = (titulo, itens, fmt, classe) => !itens.length ? null : el("details", { class: "categoria" },
     el("summary", null, el("span", { class: `marcador ${classe}` }), titulo, el("span", { class: "qtd", text: `(${itens.length})` }), icone("chevron-down", "chev")),
     ...itens.slice(0, 200).map((x) => el("div", { class: "aviso-item" }, fmt(x))),
@@ -1079,6 +1211,43 @@ async function renderComparacao() {
     bloco("Aulas alteradas", mudadas, ([a, n]) => [desc(n), el("span", { class: "local", text: `antes: ${detalhe(a)}${a.fim !== n.fim ? " até " + a.fim : ""} → agora: ${detalhe(n)}${a.fim !== n.fim ? " até " + n.fim : ""}` })], "duvida"),
     bloco("Aulas que saem", removidas, (a) => [desc(a), el("span", { class: "local", text: detalhe(a) })], "divergencia"),
   ].filter(Boolean));
+}
+
+// PDF de conferência: capa com o resumo da revisão + quadro de todas as
+// turmas da planilha enviada, marcado como não publicado.
+async function pdfConferencia() {
+  const imp = estado.importacao;
+  if (!imp) return;
+  const sai = periodoQueSai();
+  let comp = null;
+  if (sai) { await garantirPeriodo(sai.id); const a = estado.dadosPorPeriodo.get(sai.id); if (a) comp = compararVersoes(a.aulas, imp.dados.aulas); }
+  const c = contarNiveis(imp.avisos);
+  const d = imp.dados;
+  const profs = new Set(d.aulas.flatMap((a) => a.professores)).size;
+  const itens = imp.avisos.filter((a) => a.nivel !== "info");
+  const nomes = { erro: "Erro", divergencia: "Divergência", duvida: "Dúvida" };
+  $("capa-conferencia").replaceChildren(...[
+    el("div", { class: "capa-selo", text: "Conferência — NÃO PUBLICADO" }),
+    el("h1", { text: `Horários ${nomeDestino() || "(período sem nome)"}` }),
+    el("p", { text: [$("pub-titulo").value.trim(), `planilha "${d.arquivo}"`, `gerado em ${new Date().toLocaleString("pt-BR")}`].filter(Boolean).join(" · ") }),
+    el("table", { class: "capa-tabela" }, el("tbody", null,
+      el("tr", null, el("th", { text: "Aulas" }), el("td", { text: String(d.aulas.length) }), el("th", { text: "Turmas" }), el("td", { text: String(d.turmas.length) }), el("th", { text: "Professores" }), el("td", { text: String(profs) })),
+      el("tr", null, el("th", { text: "Erros" }), el("td", { text: String(c.erro) }), el("th", { text: "Divergências" }), el("td", { text: String(c.divergencia) }), el("th", { text: "Dúvidas" }), el("td", { text: String(c.duvida) })))),
+    el("p", { class: "capa-destino", text: $("dest-resumo").textContent || "" }),
+    comp ? el("p", { text: `Em relação a ${sai.nome}: ${comp.iguais} sem mudança, ${comp.novas.length} novas, ${comp.mudadas.length} alteradas, ${comp.removidas.length} saem.` }) : null,
+    el("p", { text: $("dest-dia-especial-texto").textContent || "" }),
+    el("h2", { text: itens.length ? "Pontos da revisão" : "Revisão: nenhum erro, divergência ou dúvida." }),
+    itens.length ? el("ol", { class: "capa-lista" }, ...itens.slice(0, 80).map((a) => el("li", null, el("strong", { text: `${nomes[a.nivel]} · ${a.categoria}: ` }), a.texto, a.local ? el("em", { text: ` (${a.local})` }) : null))) : null,
+    itens.length > 80 ? el("p", { text: `… e mais ${itens.length - 80}. Veja a lista completa na área do administrador.` }) : null,
+  ].filter(Boolean));
+  estado.previa = true;
+  estado.filtros = FILTROS_VAZIOS();
+  estado.agrupar = "turma";
+  estado.exibir = "grade";
+  history.pushState(null, "", location.pathname + location.search);
+  mostrarConsulta();
+  document.body.classList.add("conferencia");
+  imprimir(null);
 }
 
 function dadosDaImportacao() {
@@ -1105,12 +1274,12 @@ function renderPeriodosAdmin() {
         el("div", null,
           el("div", { class: "periodo-nome" }, icone("calendar-days"), p.nome, p.id === padrao ? el("span", { class: "tag-atual", text: "atual (abre primeiro)" }) : null),
           p.descricao ? el("div", { class: "texto-pequeno", text: p.descricao }) : null,
-          el("div", { class: "texto-pequeno", text: [`${plural(p.aulas || 0, "aula", "aulas")}`, `${plural(p.turmas || 0, "turma", "turmas")}`, p.publicadoEm ? `publicado em ${dataBr(p.publicadoEm)}` : "", p.planilha ? `planilha "${p.planilha}"` : ""].filter(Boolean).join(" · ") })),
+          el("div", { class: "texto-pequeno", text: [`${plural(p.aulas || 0, "aula", "aulas")}`, `${plural(p.turmas || 0, "turma", "turmas")}`, p.publicadoEm ? `publicado em ${dataBr(p.publicadoEm)}` : "", p.inicioAulas && p.fimAulas ? `aulas de ${dataBr(p.inicioAulas + "T12:00")} a ${dataBr(p.fimAulas + "T12:00")}` : "", p.planilha ? `planilha "${p.planilha}"` : ""].filter(Boolean).join(" · ") })),
         el("div", { class: "grupo-acoes" },
           el("button", { type: "button", class: "botao-link", onclick: () => { estado.previa = false; location.hash = p.id === padrao ? "" : `periodo=${encodeURIComponent(p.id)}`; } }, icone("eye"), "Ver"),
           p.legado ? null : [
             p.id !== padrao ? el("button", { type: "button", class: "botao-link", onclick: () => abrirAcao("padrao", p.id) }, icone("check"), "Tornar atual") : null,
-            el("button", { type: "button", class: "botao-link", onclick: () => abrirAcao("renomear", p.id) }, icone("pencil"), "Renomear"),
+            el("button", { type: "button", class: "botao-link", onclick: () => abrirAcao("renomear", p.id) }, icone("pencil"), "Editar"),
             el("button", { type: "button", class: "botao-link botao-perigo", onclick: () => abrirAcao("remover", p.id) }, icone("trash-2"), "Remover"),
           ])));
     if (aberto) card.append(formAcao(p));
@@ -1122,14 +1291,16 @@ function formAcao(p) {
   const { tipo } = acaoPeriodo;
   const textos = {
     padrao: `"${p.nome}" passará a ser o período que abre primeiro no site. Nenhum horário muda.`,
-    renomear: `Mude o nome ou a observação do período "${p.nome}". Os horários não mudam.`,
+    renomear: `Mude o nome, a observação ou as datas do período "${p.nome}". Os horários não mudam.`,
     remover: `O período "${p.nome}" (${plural(p.aulas || 0, "aula", "aulas")}) deixará de aparecer no site. Os outros períodos não mudam. A versão removida fica no histórico do GitHub.`,
   };
   const form = el("form", { class: `acao-periodo acao-${tipo}`, autocomplete: "off" },
     el("div", { class: `notice ${tipo === "remover" ? "notice-error" : "notice-info"}` }, icone(tipo === "remover" ? "triangle-alert" : "info"), el("span", { text: textos[tipo] })),
     tipo === "renomear" ? el("div", { class: "form-grade duas" },
       el("label", null, el("span", { class: "campo-rotulo", text: "Nome do período" }), el("input", { id: "acao-nome", class: "text-field", type: "text", maxlength: "40", value: p.nome, required: true })),
-      el("label", null, el("span", { class: "campo-rotulo", text: "Observação (opcional)" }), el("input", { id: "acao-descricao", class: "text-field", type: "text", maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" }))) : null,
+      el("label", null, el("span", { class: "campo-rotulo", text: "Observação (opcional)" }), el("input", { id: "acao-descricao", class: "text-field", type: "text", maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" })),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Primeiro dia de aula (agenda)" }), el("input", { id: "acao-inicio", class: "text-field", type: "date", value: p.inicioAulas || "" })),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Último dia de aula (agenda)" }), el("input", { id: "acao-fim", class: "text-field", type: "date", value: p.fimAulas || "" }))) : null,
     tipo === "remover" ? el("label", { class: "caixa-marcar" }, el("input", { id: "acao-confirmar", type: "checkbox", required: true }), el("span", { text: `Confirmo a remoção de ${p.nome}.` })) : null,
     el("div", { class: "form-grade duas" },
       el("label", null, el("span", { class: "campo-rotulo", text: "Senha de publicação" }), el("input", { id: "acao-senha", class: "text-field", type: "password", autocomplete: "current-password", required: true }))),
@@ -1146,7 +1317,11 @@ function formAcao(p) {
     ocupado(botao, true, "Gravando…");
     try {
       const op = { tipo, id: p.id };
-      if (tipo === "renomear") { op.nome = $("acao-nome").value; op.descricao = $("acao-descricao").value; }
+      if (tipo === "renomear") {
+        op.nome = $("acao-nome").value; op.descricao = $("acao-descricao").value;
+        op.datas = { inicio: $("acao-inicio").value, fim: $("acao-fim").value };
+        if (op.datas.inicio && op.datas.fim && op.datas.inicio > op.datas.fim) throw new ErroPublicacao("O primeiro dia de aula precisa ser antes do último.");
+      }
       const r = await alterarPeriodos(estado.config, $("acao-senha").value, op);
       guardar.gravar("horarios-erros", "0");
       estado.indice = r.indice;
@@ -1197,11 +1372,36 @@ async function aoPublicar(e) {
   mensagem("msg-publicar", "info", "Conferindo a senha e enviando os horários…");
   try {
     const modo = modoDestino();
+    const ini = $("dest-inicio-aulas").value, fimA = $("dest-fim-aulas").value;
+    if (ini && fimA && ini > fimA) throw new ErroPublicacao("Confira as datas do período: o primeiro dia de aula precisa ser antes do último.");
+    const dados = dadosParaPublicar();
+    // marca o que mudou em relação à versão substituída (só se for o mesmo
+    // semestre: se mais da metade mudou, é outro horário e não se marca)
+    if (sai) {
+      await garantirPeriodo(sai.id);
+      const antigos = estado.dadosPorPeriodo.get(sai.id);
+      if (antigos) {
+        const c = compararVersoes(antigos.aulas, dados.aulas);
+        const total = c.novas.length + c.mudadas.length + c.removidas.length;
+        if (total && total <= dados.aulas.length / 2) {
+          const antes = new Map(c.mudadas.map(([a, n]) => [chaveAula(n), detalheAula(a) + (a.fim !== n.fim ? ` até ${a.fim}` : "")]));
+          const novasK = new Set(c.novas.map(chaveAula));
+          dados.aulas = dados.aulas.map((a) => {
+            const k = chaveAula(a);
+            if (novasK.has(k)) return { ...a, mudou: "nova" };
+            if (antes.has(k)) return { ...a, mudou: "alterada", antes: antes.get(k) };
+            return a;
+          });
+          dados.mudancas = { em: new Date().toISOString(), de: sai.nome, removidas: c.removidas.map(({ turma, dia, inicio, fim, disciplina, professores, sala }) => ({ turma, dia, inicio, fim, disciplina, professores, sala })) };
+        }
+      }
+    }
     const op = {
       tipo: "importar", modo, nome: nomeDestino(), descricao: $("dest-descricao").value.trim(), padrao: $("dest-padrao").checked,
       alvo: modo === "substituir" ? $("dest-alvo").value : undefined,
       sai: modo === "novo" && sai ? sai.id : undefined,
-      dados: dadosParaPublicar(),
+      datas: { inicio: ini, fim: fimA },
+      dados,
     };
     const r = await alterarPeriodos(estado.config, $("pub-senha").value, op);
     guardar.gravar("horarios-erros", "0");

@@ -10,22 +10,32 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009b"></script>
-  <script src="js/icones.js?v=20261009b"></script>
+  <script src="js/protecao.js?v=20261009c"></script>
+  <script src="js/icones.js?v=20261009c"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009b">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009c">
   <meta name="theme-color" content="#2B7A40">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <script type="module" src="js/app.js?v=20261009b"></script>
+  <script type="module" src="js/app.js?v=20261009c"></script>
  </head>
  <body>
+  <!-- só aparece na impressão (capa do PDF de conferência) -->
+  <section id="capa-conferencia" class="capa-conferencia" aria-hidden="true"></section>
+  <div id="barra-offline" class="barra-offline" hidden role="status">
+   <div class="container"><span id="barra-offline-texto">Sem internet: mostrando os horários guardados neste aparelho.</span></div>
+  </div>
   <div id="barra-previa" class="barra-previa" hidden role="status">
    <div class="container">
     <span><i data-lucide="eye"></i> Prévia: é assim que o site vai ficar. Ainda <strong>não foi publicado</strong>.</span>
     <span class="linha-acoes" style="margin:0">
+     <button id="btn-previa-pdf" class="botao botao-secundario" type="button"><i data-lucide="printer"></i> PDF de conferência</button>
      <button id="btn-previa-voltar" class="botao botao-secundario" type="button"><i data-lucide="arrow-left"></i> Voltar à revisão</button>
     </span>
    </div>
@@ -45,6 +55,7 @@
       </div>
      </a>
      <div class="topo-acoes">
+      <button id="btn-instalar" class="status-pill verde" type="button" hidden><i data-lucide="download"></i> <span>Instalar app</span></button>
       <button id="btn-admin" class="status-pill" type="button"><i data-lucide="shield-check"></i> <span>Área do administrador</span></button>
       <span id="status-publicacao" class="status-pill ambar"><span class="ponto" aria-hidden="true"></span> <span id="status-publicacao-texto">Carregando…</span></span>
      </div>
@@ -61,6 +72,7 @@
       <h2 id="titulo-consulta" class="titulo-secao">Consulte os horários</h2>
       <p id="descricao-consulta" class="subtitulo">Pesquise ou filtre por curso, turma, professor, sala, turno e dia.</p>
       <p id="descricao-periodo" class="nota-periodo" hidden></p>
+      <div id="aviso-mudancas" class="aviso-mudancas" hidden></div>
       <div id="atalho-meu" class="atalho-meu" hidden></div>
 
       <div id="bloco-consulta">
@@ -212,6 +224,11 @@
          <span><strong>Intervalos diferenciados</strong> · <span id="dest-dia-especial-texto"></span>
           <label class="dia-especial-campo"><span class="campo-rotulo">Dia dos intervalos diferenciados (só mude se o dia da reunião mudar)</span><select id="dest-dia-especial" class="text-field"></select></label></span>
         </div>
+        <div class="form-grade duas">
+         <label><span class="campo-rotulo">Primeiro dia de aula (opcional)</span><input id="dest-inicio-aulas" class="text-field" type="date"></label>
+         <label><span class="campo-rotulo">Último dia de aula (opcional)</span><input id="dest-fim-aulas" class="text-field" type="date"></label>
+        </div>
+        <p class="texto-pequeno" style="margin-top:.35rem">As datas são usadas no botão "Agenda", que coloca o horário no calendário do celular. Sem elas, quem baixar escolhe as datas.</p>
         <label class="caixa-marcar"><input id="dest-padrao" type="checkbox"> <span>Tornar este o período <strong>atual</strong> (o que abre primeiro no site)</span></label>
         <div id="dest-resumo" class="notice" style="margin-top:1rem" hidden role="status"></div>
         <label id="dest-confirmar-wrap" class="caixa-marcar" hidden><input id="dest-confirmar" type="checkbox"> <span id="dest-confirmar-texto"></span></label>
@@ -224,8 +241,10 @@
        <h3 class="titulo-card">Conferir e publicar</h3>
        <div class="linha-acoes">
         <button id="btn-previa" class="botao botao-suave" type="button"><i data-lucide="eye"></i> Ver prévia do site</button>
+        <button id="btn-pdf-conferencia" class="botao botao-secundario" type="button"><i data-lucide="printer"></i> PDF de conferência</button>
         <button id="btn-baixar-json" class="botao botao-secundario" type="button"><i data-lucide="download"></i> Baixar dados (.json)</button>
        </div>
+       <p class="texto-pequeno" style="margin-top:.5rem">O PDF de conferência traz um resumo da revisão e o quadro de todas as turmas, marcado como não publicado, para enviar à coordenação antes de publicar. Na janela de impressão, escolha "Salvar como PDF".</p>
        <div id="pub-sem-config" class="notice notice-warn" style="margin-top:1rem" hidden>
         <i data-lucide="triangle-alert"></i>
         <span>A publicação ainda não foi configurada neste site. Abra <strong>Configuração da publicação</strong> abaixo (é feito uma vez só).</span>
@@ -294,6 +313,13 @@
      <span><span id="ano-rodape"></span> - Desenvolvido por <a href="https://douglasc.top/sobre/" target="_blank" rel="noopener">Prof. Douglas Camargo Carvalho</a>, docente do IFSul — Campus Sapiranga.</span>
     </div>
    </footer>
+  </div>
+
+  <div id="modal" class="modal-fundo" hidden>
+   <div class="modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <div class="modal-topo"><h3 id="modal-titulo" class="titulo-card"></h3><button id="modal-fechar" class="botao-link" type="button" aria-label="Fechar"><i data-lucide="x"></i></button></div>
+    <div id="modal-corpo"></div>
+   </div>
   </div>
  </body>
 </html>

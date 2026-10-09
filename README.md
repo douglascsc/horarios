@@ -21,6 +21,9 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - Contagem de períodos: as aulas do **PCP contam em dobro** nos totais e na carga horária. Horários e quadros não mudam. A regra fica em `PESO_POR_CURSO`, em `js/interpretar.js`.
 - No celular, o quadro semanal vira uma lista por dia, sem rolagem horizontal, e os filtros ficam recolhidos num botão.
 - Link compartilhável com os filtros (ex.: `…/#turma=INF1M`, `…/#prof=Mauro&periodo=2027-1`).
+- **Agenda**: o botão "Agenda" de cada quadro baixa um arquivo `.ics` com as aulas repetindo toda semana, para abrir no celular ou importar no Google Agenda. Usa as datas do período informadas pela coordenação, que podem ser ajustadas antes de baixar. Aulas EaD ficam de fora.
+- **Mudou recentemente**: depois de uma atualização do mesmo período, as aulas novas ou alteradas ganham um selo ("antes: professor, sala") e as que saíram aparecem no quadro, por 14 dias. Um aviso no topo permite ver só as mudanças. Se mais da metade do horário mudou, é considerado um horário novo e nada é marcado.
+- **Aplicativo e sem internet**: pode ser instalado na tela inicial ("Instalar app" ou "Adicionar à tela inicial"). Depois do primeiro acesso, funciona sem internet com os últimos horários guardados no aparelho, e avisa quando está assim.
 - **Impressão**: um quadro por página, ajustado à folha A4 deitada, com o título, o período e a data. O botão "Imprimir" de um quadro imprime só ele; o da barra imprime todos.
 
 **Área do administrador** (`…/#admin`)
@@ -33,7 +36,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
    - **C. Cancelar**: nada é alterado.
 
    Antes de uma substituição, o site mostra qual período será afetado e pede confirmação. Também mostra **o que muda** em relação à versão publicada: aulas novas, alteradas e que saem.
-5. **Prévia** do site com os novos dados, antes de publicar.
+5. **Prévia** do site com os novos dados, antes de publicar, e **PDF de conferência**: uma capa com o resumo da revisão (destino, comparação, intervalos e pontos a conferir) e o quadro de todas as turmas, marcado "não publicado", para enviar à coordenação. Também é possível informar o primeiro e o último dia de aula, usados no botão "Agenda".
 6. **Publicação com senha**. Se houver erros ou divergências, é preciso confirmar que foram revisados.
 7. **Períodos publicados**: ver, tornar atual, renomear (com observação, ex.: "válido a partir de 15/10") ou remover. Cada ação pede a senha.
 
@@ -115,11 +118,13 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 - `js/leitor-xlsx.js`: leitor próprio de `.xlsx` (zip + XML).
 - `js/interpretar.js`: interpretação e revisão. É uma função pura, que também roda no Node.
 - `js/publicar.js`: cifra o token e grava os arquivos pela API do GitHub.
+- `js/recursos.js`: arquivo de agenda (.ics) e comparação entre versões.
+- `manifest.webmanifest` e `sw.js`: aplicativo instalável e funcionamento sem internet.
 - `js/app.js`: interface. `css/estilo.css`: visual.
 
 **Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, renomear, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
 
-**Versão dos arquivos:** `index.html` e `js/app.js` carregam os scripts e o CSS com `?v=AAAAMMDD…`. Ao mudar o código, troque esse número nos dois arquivos, para os navegadores não juntarem código novo com código antigo guardado em cache.
+**Versão dos arquivos:** `index.html`, `js/app.js`, `js/recursos.js` e `sw.js` usam a mesma versão (`?v=AAAAMMDD…` / `VERSAO`). Ao mudar o código, troque esse número em todos eles, para os navegadores não juntarem código novo com código antigo guardado em cache.
 
 **Consumo:** quem consulta só baixa os arquivos do período que abriu, uma vez. Os destaques "agora" e "começa em" são recalculados no próprio navegador e não fazem requisições. A API do GitHub só é usada quando o administrador publica.
 

@@ -143,9 +143,11 @@ async function gravarCommit(token, repo, ramo, mudancas, mensagem) {
   return novo.html_url || `https://github.com/${repo}/commit/${novo.sha}`;
 }
 
-function resumoDoPeriodo(id, nome, descricao, dados) {
+const dataValida = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || "") ? d : "");
+function resumoDoPeriodo(id, nome, descricao, dados, datas) {
   return {
     id, nome, descricao: descricao || "", arquivo: arquivoDoPeriodo(id),
+    inicioAulas: dataValida(datas && datas.inicio), fimAulas: dataValida(datas && datas.fim),
     publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length,
     planilha: dados.arquivo || "", revisao: dados.revisao || null,
   };
@@ -180,7 +182,7 @@ export async function alterarPeriodos(config, senha, op) {
     }
     if (saiId !== id && acha(id)) throw new ErroPublicacao(`Já existe outro período chamado "${acha(id).nome}". Use outro nome.`);
     const dados = { ...op.dados, periodo: { id, nome }, publicadoEm: new Date().toISOString() };
-    const entrada = resumoDoPeriodo(id, nome, op.descricao, dados);
+    const entrada = resumoDoPeriodo(id, nome, op.descricao, dados, op.datas);
     let pos = lista.length;
     const nomeSai = saiId ? acha(saiId).nome : "";
     if (saiId) {
@@ -214,9 +216,10 @@ export async function alterarPeriodos(config, senha, op) {
     if (!idDoPeriodo(nome)) throw new ErroPublicacao("Informe o nome do período.");
     const outro = lista.find((x) => x.id !== p.id && idDoPeriodo(x.nome) === idDoPeriodo(nome));
     if (outro) throw new ErroPublicacao(`Já existe um período chamado "${outro.nome}".`);
-    mensagem = `Renomeia o período ${p.nome} para ${nome}`;
+    mensagem = p.nome === nome ? `Edita o período ${nome}` : `Renomeia o período ${p.nome} para ${nome}`;
     p.nome = nome;
     p.descricao = String(op.descricao || "").trim();
+    if (op.datas) { p.inicioAulas = dataValida(op.datas.inicio); p.fimAulas = dataValida(op.datas.fim); }
     // o id (e o arquivo) continuam os mesmos: links antigos seguem valendo
   } else throw new ErroPublicacao("Operação desconhecida.");
 
