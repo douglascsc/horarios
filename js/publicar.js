@@ -13,7 +13,7 @@ export const TAMANHO_MINIMO_SENHA = 10;
 export const ARQUIVO_CONFIG = "dados/publicacao.json";
 export const ARQUIVO_DADOS = "dados/horarios.json"; // formato antigo (um período só), ainda lido se não houver índice
 
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009o";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009p";
 
 export class ErroPublicacao extends Error {}
 
@@ -92,7 +92,7 @@ async function trancarNaConfig(config, senha, bruta) {
   const k = await chaveDaSenha(senha, deB64(config.sal), config.iteracoes || ITERACOES);
   return { iv: b64(iv), cifra: b64(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, bruta))) };
 }
-async function chaveLeituraDaConfig(config, senha) {
+export async function chaveLeituraDaConfig(config, senha) {
   if (!config.chaveLeitura) return null;
   try {
     const k = await chaveDaSenha(senha, deB64(config.sal), config.iteracoes || ITERACOES);
@@ -107,14 +107,18 @@ async function montarConfig({ token, repo, ramo, senha, chaveLeitura }) {
   if (chaveLeitura) config.chaveLeitura = await trancarNaConfig(config, senha, chaveLeitura);
   return config;
 }
-export async function salvarConfiguracao({ token, repo, senha, senhaLeitura, leitura }) {
+export const PEDE_SENHA_LEITURA = "Os horários estão protegidos: informe também a senha de leitura atual.";
+export async function salvarConfiguracao({ token, repo, senha, senhaLeitura }) {
   if (senha.length < TAMANHO_MINIMO_SENHA) throw new ErroPublicacao(`A senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
+  const ramo = await verificarToken(token, repo);
+  // a proteção é conferida no repositório (não no que esta página carregou)
+  const remota = await lerJsonRemoto(token, repo, ramo, ARQUIVO_LEITURA);
+  const leitura = remota && remota.chave && remota.sal ? remota : null;
   let chaveLeitura = null;
   if (leitura) {
-    if (!senhaLeitura) throw new ErroPublicacao("Os horários estão protegidos: informe também a senha de leitura atual.");
+    if (!senhaLeitura) throw new ErroPublicacao(PEDE_SENHA_LEITURA);
     try { chaveLeitura = await destrancarComSenha(leitura, senhaLeitura); } catch { throw new ErroPublicacao("A senha de leitura está incorreta."); }
   }
-  const ramo = await verificarToken(token, repo);
   const config = await montarConfig({ token, repo, ramo, senha, chaveLeitura });
   await gravarArquivo(token, repo, ramo, ARQUIVO_CONFIG, JSON.stringify(config, null, 2) + "\n", "Atualiza a configuração de publicação (token cifrado)");
   return config;
@@ -123,6 +127,7 @@ export async function salvarConfiguracao({ token, repo, senha, senhaLeitura, lei
 export async function trocarSenha(config, senhaAtual, senhaNova) {
   if (senhaNova.length < TAMANHO_MINIMO_SENHA) throw new ErroPublicacao(`A nova senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
   const token = await decifrarToken(config, senhaAtual);
+  await conferirConfigRemota(token, config);
   const chaveLeitura = await chaveLeituraDaConfig(config, senhaAtual);
   const novo = await montarConfig({ token, repo: config.repo, ramo: config.ramo || "main", senha: senhaNova, chaveLeitura });
   await gravarArquivo(token, config.repo, config.ramo || "main", ARQUIVO_CONFIG, JSON.stringify(novo, null, 2) + "\n", "Troca a senha de publicação");
@@ -156,6 +161,14 @@ async function lerJsonRemoto(token, repo, ramo, caminho, chaveLeitura) {
   if (!estaCifrado(obj)) return obj;
   if (!chaveLeitura) throw new ErroPublicacao("Os horários estão protegidos por senha de leitura, mas esta configuração não tem a chave. Refaça a configuração da publicação informando a senha de leitura.");
   try { return await decifrarJson(chaveLeitura, obj); } catch { throw new ErroPublicacao(`Não foi possível decifrar ${caminho}: a chave de leitura da configuração não confere.`); }
+}
+// A configuração desta página precisa ser a mesma do repositório: se outra
+// pessoa trocou a senha, o token ou a proteção de leitura em outro aparelho,
+// gravar com a cópia antiga poderia cifrar os horários com uma chave velha.
+const marcaConfig = (c) => JSON.stringify([c && c.token, c && c.sal, c && c.iv, c && c.chaveLeitura ? c.chaveLeitura.cifra : null]);
+async function conferirConfigRemota(token, config) {
+  const remota = await lerJsonRemoto(token, config.repo, config.ramo || "main", ARQUIVO_CONFIG);
+  if (marcaConfig(remota) !== marcaConfig(config)) throw new ErroPublicacao("A configuração da publicação foi alterada em outro aparelho. Recarregue a página e tente de novo. Nada foi alterado.");
 }
 async function lerIndiceRemoto(token, repo, ramo, chaveLeitura) {
   const indice = await lerJsonRemoto(token, repo, ramo, ARQUIVO_INDICE, chaveLeitura);
@@ -200,6 +213,7 @@ function resumoDoPeriodo(id, nome, descricao, dados, datas) {
 //     | { tipo: "remover", id } | { tipo: "padrao", id } | { tipo: "renomear", id, nome, descricao }
 export async function alterarPeriodos(config, senha, op) {
   const token = await decifrarToken(config, senha);
+  await conferirConfigRemota(token, config);
   const chaveLeitura = await chaveLeituraDaConfig(config, senha);
   const repo = config.repo, ramo = config.ramo || "main";
   const indice = await lerIndiceRemoto(token, repo, ramo, chaveLeitura);
@@ -280,6 +294,7 @@ export async function alterarPeriodos(config, senha, op) {
 // (cifrados ou não), o dados/leitura.json e a configuração, num commit só.
 async function regravarTudo(config, senha, { chaveAtual, chaveNova, leituraNova, apagarLeitura, mensagem }) {
   const token = await decifrarToken(config, senha);
+  await conferirConfigRemota(token, config);
   const repo = config.repo, ramo = config.ramo || "main";
   const indice = await lerIndiceRemoto(token, repo, ramo, chaveAtual);
   const mudancas = [];
@@ -314,6 +329,7 @@ export async function trocarSenhaLeitura(config, senha, senhaLeitura, renovarCha
   if (!renovarChave) {
     // só troca a senha: quem já entrou neste aparelho continua entrando
     const token = await decifrarToken(config, senha);
+    await conferirConfigRemota(token, config);
     const leitura = await trancarComSenha(chaveAtual, senhaLeitura);
     await gravarCommit(token, config.repo, config.ramo || "main", [{ caminho: ARQUIVO_LEITURA, conteudo: JSON.stringify(leitura, null, 1) + "\n" }], "Troca a senha de leitura");
     return { config, leitura, chave: chaveAtual };

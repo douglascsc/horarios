@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009o";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009o";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009p";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009p";
 import {
-  alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, idDoPeriodo, ErroPublicacao,
+  alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, chaveLeituraDaConfig, PEDE_SENHA_LEITURA, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009o";
-import { gerarArquivoOffline } from "./offline.js?v=20261009o";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009o";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009o";
+} from "./publicar.js?v=20261009p";
+import { gerarArquivoOffline } from "./offline.js?v=20261009p";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009p";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009p";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -166,17 +166,15 @@ async function carregarIndice() {
     if (estado.leitura) {
       const guardada = guardar.ler(CHAVE_LEITURA_GUARDADA);
       if (guardada) { try { estado.chaveLeitura = deBase64(guardada); } catch { estado.chaveLeitura = null; } }
-      let indice = estado.chaveLeitura ? await carregarJson(ARQUIVO_INDICE) : null;
-      let erro = "";
-      while (!indice || !Array.isArray(indice.periodos)) {
-        guardar.apagar(CHAVE_LEITURA_GUARDADA);
-        estado.chaveLeitura = null;
-        await pedirSenhaLeitura(erro);
-        indice = await carregarJson(ARQUIVO_INDICE);
-        erro = "Não foi possível abrir os horários. Verifique a conexão ou se a senha mudou.";
+      // o administrador entra com a senha de publicação, que também abre a
+      // chave dos horários: não precisa da senha de leitura
+      if (lerEndereco().admin) {
+        const indice = estado.chaveLeitura ? await carregarJson(ARQUIVO_INDICE) : null;
+        if (indice && Array.isArray(indice.periodos)) estado.indice = indice;
+        else { estado.chaveLeitura = null; estado.indice = { versao: 2, padrao: null, periodos: [] }; estado.indiceTrancado = true; }
+        return;
       }
-      estado.indice = indice;
-      $("btn-bloquear").hidden = !guardar.ler(CHAVE_LEITURA_GUARDADA);
+      await abrirIndiceProtegido();
       return;
     }
   }
@@ -188,6 +186,21 @@ async function carregarIndice() {
     estado.indice = { versao: 1, padrao: "atual", periodos: [{ id: "atual", nome: legado.titulo || "Atual", arquivo: ARQUIVO_DADOS, publicadoEm: legado.publicadoEm, aulas: legado.aulas.length, turmas: legado.turmas.length, legado: true }] };
     estado.dadosPorPeriodo.set("atual", legado);
   } else estado.indice = { versao: 2, padrao: null, periodos: [] };
+}
+// pede a senha de leitura até conseguir abrir o índice
+async function abrirIndiceProtegido() {
+  let indice = estado.chaveLeitura ? await carregarJson(ARQUIVO_INDICE) : null;
+  let erro = "";
+  while (!indice || !Array.isArray(indice.periodos)) {
+    guardar.apagar(CHAVE_LEITURA_GUARDADA);
+    estado.chaveLeitura = null;
+    await pedirSenhaLeitura(erro);
+    indice = await carregarJson(ARQUIVO_INDICE);
+    erro = "Não foi possível abrir os horários. Verifique a conexão ou se a senha mudou.";
+  }
+  estado.indice = indice;
+  estado.indiceTrancado = false;
+  $("btn-bloquear").hidden = !guardar.ler(CHAVE_LEITURA_GUARDADA);
 }
 async function garantirPeriodo(id) {
   if (!id || estado.dadosPorPeriodo.has(id)) return;
@@ -237,6 +250,12 @@ async function iniciar() {
 async function aoMudarEndereco() {
   const { admin } = lerEndereco();
   if (admin) { estado.previa = false; mostrarAdmin(); return; }
+  estado.recuperando = false;
+  if (estado.indiceTrancado) {
+    // entrou direto no administrador e agora quer ver a consulta
+    await abrirIndiceProtegido();
+    if (!periodoPorId(estado.periodoId)) estado.periodoId = periodoPadrao();
+  }
   if (!estado.previa) await garantirPeriodo(estado.periodoId);
   mostrarConsulta();
 }
@@ -1123,6 +1142,7 @@ function mostrarAdmin() {
   estado.periodoId = periodoPadrao();
   atualizarStatus();
   garantirPeriodo(estado.periodoId).then(atualizarStatus);
+  if (estado.recuperando && estado.config && !estado.senhaAdmin) { mostrarRecuperacao(); return; }
   const trancado = !!estado.config && !estado.senhaAdmin;
   $("portao-admin").hidden = !trancado;
   $("admin-conteudo").hidden = trancado;
@@ -1133,6 +1153,20 @@ function mostrarAdmin() {
   renderPeriodosAdmin();
   if (estado.importacao) renderDestino();
   renderEtapas();
+}
+
+// "Esqueci a senha": só a configuração (novo token + nova senha). Não abre
+// nada além disso: gravar exige um token válido com acesso ao repositório.
+function mostrarRecuperacao() {
+  $("portao-admin").hidden = true;
+  $("admin-conteudo").hidden = false;
+  $("btn-admin-sair").hidden = true;
+  for (const id of ["etapas", "nav-etapas", "sec-envio", "sec-periodos", "sec-revisao", "sec-leitura", "sec-destino", "sec-publicar", "bloco-trocar-senha", "bloco-leitura"]) $(id).hidden = true;
+  $("sec-config").hidden = false;
+  $("detalhes-config").open = true;
+  $("cfg-leitura-wrap").hidden = !estado.leitura;
+  mensagem("msg-config", "info", "Cole um token novo e defina uma senha nova. A senha antiga deixa de valer.");
+  setTimeout(() => $("cfg-token").focus(), 0);
 }
 
 // ---- entrada no administrador com a senha de publicação
@@ -1149,6 +1183,19 @@ function aplicarSessaoAdmin() {
 function entrouNoAdmin(senha) {
   estado.senhaAdmin = senha;
   guardar.gravar("horarios-erros", "0");
+}
+// com a senha de leitura ligada, a chave dos horários também está trancada
+// com a senha de publicação: o administrador não precisa da de leitura
+async function destrancarIndiceDoAdmin() {
+  if (!estado.indiceTrancado || !estado.config || !estado.senhaAdmin) return;
+  try {
+    const chave = await chaveLeituraDaConfig(estado.config, estado.senhaAdmin);
+    if (!chave) return;
+    estado.chaveLeitura = chave; // só na memória: não fica "lembrada" no aparelho
+    const indice = await carregarJson(ARQUIVO_INDICE);
+    if (indice && Array.isArray(indice.periodos)) { estado.indice = indice; estado.indiceTrancado = false; }
+    else estado.chaveLeitura = null;
+  } catch { estado.chaveLeitura = null; }
 }
 function sairDoAdmin(aviso) {
   estado.senhaAdmin = "";
@@ -1171,6 +1218,7 @@ function ligarPortaoAdmin() {
     try {
       await decifrarToken(estado.config, $("adm-senha").value);
       entrouNoAdmin($("adm-senha").value);
+      await destrancarIndiceDoAdmin();
       $("adm-senha").value = "";
       mostrarAdmin();
     } catch {
@@ -1181,6 +1229,7 @@ function ligarPortaoAdmin() {
     } finally { ocupado(botao, false); }
   });
   $("btn-portao-admin-voltar").addEventListener("click", () => { location.hash = ""; });
+  $("btn-esqueci").addEventListener("click", () => { estado.recuperando = true; mostrarAdmin(); });
   $("btn-admin-sair").addEventListener("click", () => sairDoAdmin());
 }
 
@@ -1348,9 +1397,9 @@ function cancelarImportacao() {
 
 async function processarArquivo(arquivo) {
   mensagem("msg-envio", "info", `Lendo "${arquivo.name}"…`);
+  estado.importacao = null;
   esconderEtapas();
   mensagem("msg-publicar");
-  estado.importacao = null;
   if (!/\.(xlsx|xls)$/i.test(arquivo.name)) { mensagem("msg-envio", "error", "Envie um arquivo do Excel (.xlsx)."); return; }
   if (arquivo.size > LIMITE_ARQUIVO) { mensagem("msg-envio", "error", `O arquivo tem ${(arquivo.size / 1048576).toFixed(1)} MB; o limite é ${Math.round(LIMITE_ARQUIVO / 1048576)} MB.`); return; }
   try {
@@ -1911,6 +1960,8 @@ async function aoMudarLeitura(e) {
 async function aoRemoverLeitura(e) {
   e.preventDefault();
   if (!estado.config || !estado.leitura) return;
+  const espera = bloqueio();
+  if (espera) { mensagem("msg-leitura", "error", `Muitas tentativas com senha errada. Aguarde ${espera} s.`); return; }
   const botao = $("btn-leitura-remover");
   ocupado(botao, true, "Removendo…");
   try {
@@ -1935,15 +1986,21 @@ async function aoConfigurar(e) {
   ocupado(botao, true, "Salvando…");
   mensagem("msg-config", "info", "Conferindo o token e salvando a configuração cifrada no repositório…");
   try {
-    estado.config = await salvarConfiguracao({ token, repo, senha, senhaLeitura: $("cfg-senha-leitura").value, leitura: estado.leitura });
+    estado.config = await salvarConfiguracao({ token, repo, senha, senhaLeitura: $("cfg-senha-leitura").value });
+    if (estado.config.chaveLeitura && !estado.leitura) estado.leitura = await carregarJson(ARQUIVO_LEITURA);
     entrouNoAdmin(senha);
+    await destrancarIndiceDoAdmin();
+    const recuperou = estado.recuperando;
+    estado.recuperando = false;
     aplicarSessaoAdmin();
     $("btn-admin-sair").hidden = false;
     for (const id of ["cfg-token", "cfg-senha", "cfg-senha2", "cfg-senha-leitura"]) $(id).value = "";
-    mensagem("msg-config", "success", "Configuração salva. A partir de agora, para publicar basta a senha (em qualquer computador).");
     atualizarConfigUI();
+    if (recuperou) mostrarAdmin();
+    mensagem("msg-config", "success", "Configuração salva. A partir de agora, para publicar basta a senha (em qualquer computador).");
     if (estado.importacao) renderResumoDestino();
   } catch (err) {
+    if (err instanceof ErroPublicacao && err.message === PEDE_SENHA_LEITURA) $("cfg-leitura-wrap").hidden = false;
     mensagem("msg-config", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível salvar a configuração.");
     if (!(err instanceof ErroPublicacao)) console.error(err);
   } finally { ocupado(botao, false); }

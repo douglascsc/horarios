@@ -33,7 +33,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 
 **Área do administrador** (`…/#admin`)
 
-**Entrada com a senha de publicação**: depois que a publicação está configurada, a área do administrador só abre com a senha de publicação, a mesma criada junto com o token. Enquanto a aba estiver aberta, a senha não é pedida de novo para publicar, editar, remover ou mexer na senha de leitura. Fechar ou recarregar a página, ou clicar em "Sair", pede a senha outra vez. Ela fica só na memória da aba, nunca é gravada no aparelho. Trocar a própria senha continua pedindo a senha atual. Antes da primeira configuração, a área fica aberta, para que seja possível configurar.
+**Entrada com a senha de publicação**: depois que a publicação está configurada, a área do administrador só abre com a senha de publicação, a mesma criada junto com o token. Enquanto a aba estiver aberta, a senha não é pedida de novo para publicar, editar, remover ou mexer na senha de leitura. Fechar ou recarregar a página, ou clicar em "Sair", pede a senha outra vez. Ela fica só na memória da aba, nunca é gravada no aparelho. Trocar a própria senha continua pedindo a senha atual. Antes da primeira configuração, a área fica aberta, para que seja possível configurar. Se a senha for esquecida, "Configurar com um novo token", na tela de entrada, permite colar um token novo e definir outra senha (se a senha de leitura estiver ligada, ela também é pedida). Com a senha de leitura ligada, o administrador entra só com a senha de publicação: não precisa da de leitura.
 
 Ao enviar uma planilha, a área vira um **assistente em 4 passos**, com uma barra de etapas no topo e os botões Voltar/Próximo. O site só deixa avançar quando o passo está resolvido e diz o que falta.
 
@@ -136,7 +136,7 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 - `manifest.webmanifest` e `sw.js`: aplicativo instalável e funcionamento sem internet.
 - `js/app.js`: interface. `css/estilo.css`: visual.
 
-**Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, editar, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
+**Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, editar, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente, e a configuração do repositório é comparada com a da página: se a senha, o token ou a senha de leitura tiverem sido trocados em outro aparelho, nada é gravado e o site pede para recarregar. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
 
 **Versão dos arquivos:** `index.html`, `js/app.js`, `js/recursos.js`, `js/publicar.js` e `sw.js` usam a mesma versão (`?v=AAAAMMDD…` / `VERSAO`). Ao mudar o código, troque esse número em todos eles, para os navegadores não juntarem código novo com código antigo guardado em cache.
 
@@ -166,7 +166,7 @@ Por padrão, quem tem o link vê os horários. Em **Configuração → Senha de 
 - Os arquivos de horários passam a ser gravados **cifrados** (AES-GCM 256) com uma chave aleatória. A chave fica em `dados/leitura.json`, trancada com a senha de leitura (PBKDF2-SHA256, 310 mil iterações), e também trancada com a senha de publicação, para o administrador continuar publicando sem digitá-la.
 - Quem abre o site vê uma tela pedindo a senha. Com "Lembrar neste aparelho", ela não é pedida de novo; "Bloquear", no rodapé, esquece.
 - Ao trocar a senha, dá para **gerar chave nova**: os aparelhos que já tinham entrado precisam da senha nova. A proteção pode ser removida a qualquer momento (os arquivos voltam a ser gravados abertos).
-- **Limites:** é uma proteção de site estático. O arquivo cifrado é público, então alguém pode tentar adivinhar a senha fora do site; use uma senha que não seja óbvia e troque-a, gerando chave nova, se ela vazar. A **versão offline** baixada por quem já entrou **não pede senha**: ela leva os horários abertos dentro do arquivo.
+- **Limites:** é uma proteção de site estático. O arquivo cifrado é público, então alguém pode tentar adivinhar a senha fora do site; use uma senha que não seja óbvia e troque-a, gerando chave nova, se ela vazar. A **versão offline** baixada por quem já entrou **não pede senha**: ela leva os horários abertos dentro do arquivo. A proteção vale para o que for publicado **depois** de ligada: as versões anteriores continuam legíveis no histórico do repositório, que é público. Para escondê-las também, seria preciso um repositório privado (o GitHub Pages em repositório privado exige plano pago).
 
 ## Segurança da importação
 
