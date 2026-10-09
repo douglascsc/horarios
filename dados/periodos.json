@@ -1,7 +1,7 @@
 {
  "versao": 2,
  "padrao": "2026-2",
- "atualizadoEm": "2026-10-09T13:36:35.481Z",
+ "atualizadoEm": "2026-10-09T15:14:23.433Z",
  "periodos": [
   {
    "id": "2026-2",
@@ -11,7 +11,7 @@
    "inicioAulas": "",
    "fimAulas": "",
    "recado": "",
-   "publicadoEm": "2026-10-09T13:36:35.480Z",
+   "publicadoEm": "2026-10-09T15:14:23.432Z",
    "aulas": 249,
    "turmas": 18,
    "planilha": "Horários - IFSul - SG - 2026_2 .xlsx",
