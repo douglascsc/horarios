@@ -207,6 +207,11 @@
          <label><span class="campo-rotulo">Observação exibida no site (opcional)</span><input id="dest-descricao" class="text-field" type="text" maxlength="120" placeholder="Ex.: válido a partir de 15/10"></label>
          <label><span class="campo-rotulo">Título no topo do site</span><input id="pub-titulo" class="text-field" type="text" maxlength="120" placeholder="Ex.: IFSul — Campus Sapiranga"></label>
         </div>
+        <div class="notice notice-info dia-especial" style="margin-top:1rem">
+         <i data-lucide="calendar-days"></i>
+         <span><strong>Intervalos diferenciados</strong> · <span id="dest-dia-especial-texto"></span>
+          <label class="dia-especial-campo"><span class="campo-rotulo">Dia dos intervalos diferenciados (só mude se o dia da reunião mudar)</span><select id="dest-dia-especial" class="text-field"></select></label></span>
+        </div>
         <label class="caixa-marcar"><input id="dest-padrao" type="checkbox"> <span>Tornar este o período <strong>atual</strong> (o que abre primeiro no site)</span></label>
         <div id="dest-resumo" class="notice" style="margin-top:1rem" hidden role="status"></div>
         <label id="dest-confirmar-wrap" class="caixa-marcar" hidden><input id="dest-confirmar" type="checkbox"> <span id="dest-confirmar-texto"></span></label>

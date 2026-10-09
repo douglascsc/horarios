@@ -73,6 +73,13 @@ Cabeçalhos aceitos na tabela de horários (sem diferença entre maiúsculas e a
 
 Se faltar uma coluna obrigatória, a revisão mostra **qual coluna falta e os nomes aceitos**. Uma estrutura que o site não entende nunca é publicada em silêncio.
 
+**Grade de períodos e intervalos.** A grade oficial fica em `GRADE_OFICIAL`, no arquivo `js/interpretar.js`:
+- Intervalos normais: 09:45–10:00, 12:15–13:30, 15:45–16:00 e 20:30–20:45.
+- No dia da **reunião de ensino** (por padrão, **quarta-feira**), os intervalos são **09:00–09:15** e **15:00–15:15**. O 3º período da manhã vai das 09:15 às 10:00 e o 3º da tarde, das 15:15 às 16:00.
+- As aulas desse dia sempre seguem essa grade, mesmo que a planilha diga outro horário: uma aula "15:00" na quarta aparece como 15:15–16:00.
+- Na publicação, o site sempre informa isso e permite **trocar o dia** (ou escolher "nenhum"), caso a reunião mude. Se ninguém mexer, continua sendo quarta.
+- A revisão avisa se os quadros da planilha tiverem horários diferentes da grade oficial.
+
 A turma é montada como **curso + ano + turno** (`INF1M`, `PCP2N`), igual aos quadros por professor da planilha. As dependências viram `Dep. INF`, `Dep. ETM`. Cada linha ocupa *CH* períodos seguidos a partir do *Início*, seguindo os períodos dos quadros. Os intervalos, como o das 09:45 às 10:00, são respeitados.
 
 ### O que a revisão confere

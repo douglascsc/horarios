@@ -4,7 +4,7 @@
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
 import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO } from "./interpretar.js";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
@@ -243,9 +243,21 @@ function indice(dados) {
     dias: DIAS.filter((d) => aulas.some((a) => a.dia === d)),
     ordemTurmas,
     slots: slotsDe(dados, aulas),
+    especiais: especiaisDe(dados),
   };
   cacheIndice.set(dados, idx);
   return idx;
+}
+// dias com grade diferente (dados.periodosPorDia), ex.: quarta 15:15–16:00
+function especiaisDe(dados) {
+  const base = dados.periodos || [];
+  const out = {};
+  for (const [d, lista] of Object.entries(dados.periodosPorDia || {})) {
+    const dif = lista.map(([i, f], k) => base[k] && (base[k][0] !== i || base[k][1] !== f)
+      ? { ini: minutos(base[k][0]), fim: minutos(base[k][1]), iniEsp: minutos(i), fimEsp: minutos(f), intervaloIni: k > 0 ? minutos(lista[k - 1][1]) : minutos(i) } : null).filter(Boolean);
+    if (dif.length) out[d] = dif;
+  }
+  return out;
 }
 function slotsDe(dados, aulas) {
   if (dados.periodos && dados.periodos.length) return dados.periodos.map(([i, f]) => ({ ini: minutos(i), fim: minutos(f) }));
@@ -566,7 +578,7 @@ function renderLista(aulas) {
   return el("div", { class: "lista-aulas" }, ...lista.map((a) => cartaoAula(a, { comDia: estado.agrupar !== "dia" })));
 }
 
-function renderSemana(aulas, idx) {
+function renderSemana(aulas, idx, dados = dadosAtivos() || {}) {
   const presenciais = aulas.filter((a) => a.dia !== "ead");
   const ead = aulas.filter((a) => a.dia === "ead").sort((a, b) => a.ini - b.ini);
   const hoje = estado.periodoId === periodoPadrao() && !estado.previa ? diaDeHoje() : null;
@@ -610,7 +622,8 @@ function renderSemana(aulas, idx) {
       }
       const grade = el("div", { class: "semana", style: `grid-template-columns: 4.4rem repeat(${diasCol.length}, minmax(0, 1fr));` });
       grade.append(el("div", { style: "grid-row:1;grid-column:1" }));
-      diasCol.forEach((d, i) => grade.append(el("div", { class: `cab-dia dia-${d}${d === hoje ? " hoje" : ""}`, style: `grid-row:1;grid-column:${i + 2}` }, NOME_DIA[d], d === hoje ? el("span", { class: "pilula-hoje", style: "margin-left:.35rem", text: "hoje" }) : null)));
+      diasCol.forEach((d, i) => grade.append(el("div", { class: `cab-dia dia-${d}${d === hoje ? " hoje" : ""}`, style: `grid-row:1;grid-column:${i + 2}` }, NOME_DIA[d], d === hoje ? el("span", { class: "pilula-hoje", style: "margin-left:.35rem", text: "hoje" }) : null,
+        idx.especiais[d] && presenciais.some((a) => a.dia === d) ? el("small", { class: "cab-especial", text: "horário especial" }) : null)));
       const ocupado = new Set();
       for (const c of celulas) {
         const col = diasCol.indexOf(c.dia) + 2;
@@ -638,6 +651,12 @@ function renderSemana(aulas, idx) {
         ...juntarParalelas(doDia).map((l) => blocoParalelo(l))));
     }
     partes.push(listaDias);
+  }
+  // nota sobre dias com horário especial (ex.: quarta, intervalo 15:00–15:15)
+  for (const [d, dif] of Object.entries(idx.especiais)) {
+    if (!presenciais.some((a) => a.dia === d && dif.some((x) => a.ini < x.fimEsp && a.fimMin > x.iniEsp))) continue;
+    partes.push(el("p", { class: "nota-especial" }, icone("info"),
+      `${NOME_DIA[d]}: intervalos diferenciados${dados.motivoDiaEspecial ? ` (${dados.motivoDiaEspecial})` : ""} — ${dif.map((x) => `${hhmm(x.iniEsp)}–${hhmm(x.fimEsp)} em vez de ${hhmm(x.ini)}–${hhmm(x.fim)}`).join(", ")} (intervalos ${dif.map((x) => `${hhmm(x.intervaloIni)}–${hhmm(x.iniEsp)}`).join(" e ")}).`));
   }
   if (ead.length) {
     partes.push(el("div", { class: "ead-bloco" },
@@ -736,6 +755,14 @@ function ligarAdmin() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
   $("form-destino").addEventListener("submit", (e) => e.preventDefault());
+  $("dest-dia-especial").addEventListener("change", (e) => {
+    const imp = estado.importacao;
+    if (!imp) return;
+    imp.opcoes.diaEspecial = e.target.value;
+    const novo = interpretar(imp.abasLidas, imp.opcoes);
+    Object.assign(imp, { dados: novo.dados, avisos: novo.avisos, pendencias: novo.pendencias, abas: novo.abas });
+    renderRevisao(imp); renderPendencias(); renderPublicarConfig(); renderDiaEspecial(); renderResumoDestino(); renderComparacao();
+  });
   $("form-destino").addEventListener("change", renderDestino);
   $("form-destino").addEventListener("input", (e) => { if (e.target.matches("input[type=text]")) renderResumoDestino(); });
   $("btn-cancelar-importacao").addEventListener("click", cancelarImportacao);
@@ -876,10 +903,11 @@ function renderPendencias() {
   const decididas = imp ? Object.entries(imp.opcoes.decisoesInicio) : [];
   if (!pend.length && !decididas.length) { box.hidden = true; return; }
   box.hidden = false;
+  const inicios = pend.filter((p) => p.tipo === "inicio");
   box.replaceChildren(
     el("h4", { class: "subtitulo-bloco" }, icone("clock"), pend.length ? `Decida antes de publicar (${pend.length})` : "Decisões tomadas"),
-    el("p", { class: "texto-pequeno", text: "Estas aulas começam num horário que não está na grade da planilha. Mantenha o horário informado (autorizar) ou coloque a aula no horário da grade." }),
-    ...pend.map((p) => el("div", { class: "pendencia" },
+    inicios.length ? el("p", { class: "texto-pequeno", style: "margin-top:.5rem", text: "Estas aulas começam num horário que não está na grade. Mantenha o horário informado (autorizar) ou coloque a aula no horário da grade." }) : null,
+    ...inicios.map((p) => el("div", { class: "pendencia" },
       el("div", null, el("strong", { text: `${p.disciplina} · ${p.turma} · ${NOME_DIA[p.dia]}` }),
         el("div", { class: "texto-pequeno", text: `Começa às ${p.inicio}; o período da grade é ${p.grade}–${p.gradeFim}.` }),
         el("span", { class: "local", text: p.local })),
@@ -925,8 +953,28 @@ function periodoQueSai() {
   return null;
 }
 
+// Intervalos diferenciados (reunião de ensino): quarta por padrão; o
+// administrador pode mudar o dia (ou nenhum) caso um dia mude.
+function renderDiaEspecial() {
+  const imp = estado.importacao;
+  if (!imp) return;
+  const dia = imp.opcoes.diaEspecial === undefined ? DIA_ESPECIAL_PADRAO : imp.opcoes.diaEspecial;
+  const sel = $("dest-dia-especial");
+  if (!sel.options.length) {
+    sel.append(...["seg", "ter", "qua", "qui", "sex"].map((d) => el("option", { value: d, text: NOME_DIA[d] + (d === DIA_ESPECIAL_PADRAO ? " (padrão)" : "") })),
+      el("option", { value: "", text: "Nenhum dia (todos iguais)" }));
+  }
+  sel.value = dia;
+  const base = GRADE_OFICIAL.normal, esp = GRADE_OFICIAL.especial;
+  const intervalos = esp.map((p, i) => (i > 0 && p[0] !== esp[i - 1][1] && p[0] !== base[i][0] ? `${esp[i - 1][1]}–${p[0]}` : null)).filter(Boolean);
+  $("dest-dia-especial-texto").textContent = dia
+    ? `Na ${NOME_DIA[dia].toLowerCase()}-feira os intervalos são diferenciados por causa da ${MOTIVO_DIA_ESPECIAL}: ${intervalos.join(" e ")}. As aulas desse dia seguem esse horário, mesmo que a planilha diga outro.`
+    : `Nenhum dia terá intervalos diferenciados: todos seguem a mesma grade.`;
+}
+
 function renderDestino() {
   if (!estado.importacao) return;
+  renderDiaEspecial();
   const ps = periodos().filter((p) => !p.legado);
   const cheio = ps.length >= MAX_PERIODOS;
   const opSubst = document.querySelector("input[name=dest-modo][value=substituir]");

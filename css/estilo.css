@@ -402,6 +402,11 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
 .pendencia .local { display: block; font-size: .72rem; color: var(--slate-500); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pendencia-acoes { display: flex; flex-wrap: wrap; gap: .5rem; }
 .so-impressao { display: none; }
+.dia-especial-campo { display: block; margin-top: .6rem; max-width: 22rem; }
+.dia-especial-campo .campo-rotulo { color: #204f99; }
+.cab-especial { display: block; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+.nota-especial { display: flex; align-items: flex-start; gap: .4rem; margin-top: .75rem; font-size: .8rem; color: var(--slate-600); }
+.nota-especial .icone { color: var(--teal); margin-top: .15rem; }
 
 /* ---------- impressão: um quadro por página, ajustado à folha A4 deitada.
    O botão de um quadro imprime só ele; "Imprimir" na barra imprime todos. */

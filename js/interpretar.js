@@ -15,6 +15,23 @@ export const DIAS = ["seg", "ter", "qua", "qui", "sex", "sab", "ead"];
 export const NOME_DIA = { seg: "Segunda", ter: "Terça", qua: "Quarta", qui: "Quinta", sex: "Sexta", sab: "Sábado", ead: "EaD" };
 export const NOME_TURNO = { M: "Manhã", T: "Tarde", N: "Noite" };
 
+// Grade oficial de períodos (intervalos 09:45–10:00, 12:15–13:30,
+// 15:45–16:00 e 20:30–20:45). No dia da REUNIÃO DE ENSINO (quarta-feira,
+// salvo se o administrador escolher outro dia ao publicar) os intervalos
+// são 09:00–09:15 e 15:00–15:15: o 3º período da manhã vai das 09:15 às
+// 10:00 e o 3º da tarde das 15:15 às 16:00. As aulas desse dia sempre
+// seguem esta grade, mesmo que a planilha diga outra coisa.
+export const DIA_ESPECIAL_PADRAO = "qua";
+export const MOTIVO_DIA_ESPECIAL = "reunião de ensino";
+export const GRADE_OFICIAL = {
+  normal: [["07:30", "08:15"], ["08:15", "09:00"], ["09:00", "09:45"], ["10:00", "10:45"], ["10:45", "11:30"], ["11:30", "12:15"],
+    ["13:30", "14:15"], ["14:15", "15:00"], ["15:00", "15:45"], ["16:00", "16:45"], ["16:45", "17:30"], ["17:30", "18:15"],
+    ["18:15", "19:00"], ["19:00", "19:45"], ["19:45", "20:30"], ["20:45", "21:30"], ["21:30", "22:15"]],
+  especial: [["07:30", "08:15"], ["08:15", "09:00"], ["09:15", "10:00"], ["10:00", "10:45"], ["10:45", "11:30"], ["11:30", "12:15"],
+    ["13:30", "14:15"], ["14:15", "15:00"], ["15:15", "16:00"], ["16:00", "16:45"], ["16:45", "17:30"], ["17:30", "18:15"],
+    ["18:15", "19:00"], ["19:00", "19:45"], ["19:45", "20:30"], ["20:45", "21:30"], ["21:30", "22:15"]],
+};
+
 // Regra de contagem: as aulas destes cursos CONTAM em dobro nos totais de
 // períodos e na carga horária. Só a contagem muda; horários, quadros e
 // duração das aulas continuam iguais.
@@ -206,11 +223,25 @@ export function interpretar(abas, opcoes = {}) {
     }
     resumoAbas.push({ nome: aba.nome, tipo: "grade", descricao: "Quadro de horários (usado para conferência)", linhas: blocosGrade.filter((b) => b.aba === aba.nome).length, colunas: [] });
   }
+  const paraMin = (lista) => lista.map(([i, f]) => ({ ini: lerHora(i), fim: lerHora(f) }));
+  const oficialNormal = paraMin(GRADE_OFICIAL.normal), oficialQuarta = paraMin(GRADE_OFICIAL.especial);
   let slots = [...slotsMapa.entries()].map(([ini, fim]) => ({ ini, fim })).sort((a, b) => a.ini - b.ini);
-  const slotsDaGrade = slots.length > 0;
-  if (!slotsDaGrade && abasDados.length) {
-    avisar("info", "Períodos", "A planilha não tem quadros de grade; a duração de cada período foi considerada 45 minutos, em sequência a partir do início informado.");
+  const slotsDaGrade = true;
+  if (!slots.length) {
+    slots = oficialNormal;
+    if (abasDados.length) avisar("info", "Períodos", "A planilha não tem quadros de grade; foi usada a grade oficial de períodos (07:30–22:15, com os intervalos de sempre).");
+  } else {
+    // a grade dos quadros bate com a oficial?
+    const fmt = (x) => `${hhmm(x.ini)}–${hhmm(x.fim)}`;
+    const faltam = oficialNormal.filter((o) => !slots.some((x) => x.ini === o.ini && x.fim === o.fim)).map(fmt);
+    const sobram = slots.filter((x) => !oficialNormal.some((o) => x.ini === o.ini && x.fim === o.fim)).map(fmt);
+    if (faltam.length || sobram.length) {
+      avisar("divergencia", "Grade de períodos", `Os horários dos quadros da planilha não são iguais à grade oficial.${sobram.length ? " Na planilha e não na grade oficial: " + sobram.join(", ") + "." : ""}${faltam.length ? " Na grade oficial e não na planilha: " + faltam.join(", ") + "." : ""} Foi usada a grade da planilha.`);
+    }
   }
+  // grade de quarta alinhada período a período com a grade usada
+  const slotsQuarta = slots.map((x) => { const i = oficialNormal.findIndex((o) => o.ini === x.ini); return i >= 0 ? oficialQuarta[i] : x; });
+
   if (datasPublicacao.size > 1) avisar("duvida", "Publicação", `Os quadros da planilha têm datas de publicação diferentes: ${[...datasPublicacao].join(", ")}.`);
 
   // ---- 2. registros das abas de dados
@@ -336,40 +367,61 @@ export function interpretar(abas, opcoes = {}) {
 
   // ---- 3. expandir em períodos
   const pendencias = [];
+  // dia com intervalos diferenciados (reunião de ensino): quarta, a menos
+  // que o administrador escolha outro dia (opcoes.diaEspecial; "" = nenhum)
+  const diaEspecial = opcoes.diaEspecial === undefined ? DIA_ESPECIAL_PADRAO : opcoes.diaEspecial;
+  const temQuarta = !!diaEspecial && registros.some((g) => g.dia === diaEspecial);
+  const quartaDifere = slotsQuarta.some((x, i) => x.ini !== slots[i].ini || x.fim !== slots[i].fim);
+  const quartaEspecial = temQuarta && quartaDifere;
+  if (diaEspecial && diaEspecial !== DIA_ESPECIAL_PADRAO) avisar("info", "Dia dos intervalos diferenciados", `Os intervalos diferenciados (${MOTIVO_DIA_ESPECIAL}) foram aplicados na ${NOME_DIA[diaEspecial]}, e não na ${NOME_DIA[DIA_ESPECIAL_PADRAO]} (escolha do administrador).`);
+  if (!diaEspecial) avisar("info", "Dia dos intervalos diferenciados", `Nenhum dia com intervalos diferenciados: todos os dias seguem a mesma grade (escolha do administrador).`);
+  if (quartaEspecial) {
+    const dif = slots.map((x, i) => [x, slotsQuarta[i]]).filter(([x, q]) => x.ini !== q.ini || x.fim !== q.fim)
+      .map(([x, q]) => `${hhmm(q.ini)}–${hhmm(q.fim)} (em vez de ${hhmm(x.ini)}–${hhmm(x.fim)})`).join(", ");
+    const intervalos = slotsQuarta.map((q, i) => (i > 0 && q.ini - slotsQuarta[i - 1].fim > 0 && (q.ini !== slots[i].ini) ? `${hhmm(slotsQuarta[i - 1].fim)}–${hhmm(q.ini)}` : null)).filter(Boolean);
+    avisar("info", "Intervalos diferenciados", `${NOME_DIA[diaEspecial]} (${MOTIVO_DIA_ESPECIAL}) usa os intervalos ${intervalos.join(" e ")}: ${dif}.`);
+  }
+  let ajustadasQuarta = 0;
   const decisoes = opcoes.decisoesInicio || {};
   const aulas = [];
   for (const g of registros) {
     const periodos = [];
     if (slotsDaGrade) {
-      let k = slots.findIndex((s) => s.ini === g.ini);
+      const gradeDia = g.dia === diaEspecial && quartaEspecial ? slotsQuarta : slots;
+      let k = gradeDia.findIndex((s) => s.ini === g.ini);
+      if (k < 0) {
+        k = slots.findIndex((s) => s.ini === g.ini); // horário "normal" numa quarta especial
+        if (k >= 0 && gradeDia !== slots) { if (gradeDia[k].ini !== g.ini) ajustadasQuarta++; }
+      }
+      if (k >= 0) g.ini = gradeDia[k].ini;
       if (k < 0) {
         // o administrador decide: manter o horário informado ou pôr na grade
-        k = slots.findIndex((s) => g.ini > s.ini && g.ini < s.fim);
+        k = gradeDia.findIndex((s) => g.ini > s.ini && g.ini < s.fim);
         if (k < 0) { // antes do 1º, depois do último ou num intervalo: período mais próximo
           let melhor = -1, dist = Infinity;
-          slots.forEach((s, i) => { const d = Math.abs(s.ini - g.ini); if (d < dist) { dist = d; melhor = i; } });
+          gradeDia.forEach((s, i) => { const d = Math.abs(s.ini - g.ini); if (d < dist) { dist = d; melhor = i; } });
           if (dist <= 60) k = melhor;
         }
         const chave = `${g.aba}|${g.linha}`;
         const quando = `${g.disciplina} (${g.turma}, ${NOME_DIA[g.dia]})`;
         if (k < 0) avisar("duvida", "Início fora da grade", `${quando}: início ${hhmm(g.ini)} não corresponde a nenhum período dos quadros da planilha; mantido como está.`, g.local);
         else if (decisoes[chave] === "grade") {
-          avisar("info", "Início ajustado à grade", `${quando}: início ${hhmm(g.ini)} foi colocado na grade, às ${hhmm(slots[k].ini)} (decisão do administrador).`, g.local);
-          g.ini = slots[k].ini;
+          avisar("info", "Início ajustado à grade", `${quando}: início ${hhmm(g.ini)} foi colocado na grade, às ${hhmm(gradeDia[k].ini)} (decisão do administrador).`, g.local);
+          g.ini = gradeDia[k].ini;
         } else if (decisoes[chave] === "manter") {
-          avisar("info", "Início fora da grade autorizado", `${quando}: início ${hhmm(g.ini)} mantido, dentro do período ${hhmm(slots[k].ini)}–${hhmm(slots[k].fim)} (autorizado pelo administrador).`, g.local);
+          avisar("info", "Início fora da grade autorizado", `${quando}: início ${hhmm(g.ini)} mantido, dentro do período ${hhmm(gradeDia[k].ini)}–${hhmm(gradeDia[k].fim)} (autorizado pelo administrador).`, g.local);
         } else {
-          pendencias.push({ chave, tipo: "inicio", local: g.local, disciplina: g.disciplina, turma: g.turma, dia: g.dia, inicio: hhmm(g.ini), grade: hhmm(slots[k].ini), gradeFim: hhmm(slots[k].fim) });
-          avisar("duvida", "Início fora da grade", `${quando}: início ${hhmm(g.ini)} não é um horário da grade (${hhmm(slots[k].ini)}–${hhmm(slots[k].fim)}). Decida: manter ${hhmm(g.ini)} ou colocar às ${hhmm(slots[k].ini)}.`, g.local);
+          pendencias.push({ chave, tipo: "inicio", local: g.local, disciplina: g.disciplina, turma: g.turma, dia: g.dia, inicio: hhmm(g.ini), grade: hhmm(gradeDia[k].ini), gradeFim: hhmm(gradeDia[k].fim) });
+          avisar("duvida", "Início fora da grade", `${quando}: início ${hhmm(g.ini)} não é um horário da grade (${hhmm(gradeDia[k].ini)}–${hhmm(gradeDia[k].fim)}). Decida: manter ${hhmm(g.ini)} ou colocar às ${hhmm(gradeDia[k].ini)}.`, g.local);
         }
       }
       if (k < 0) { for (let j = 0; j < g.ch; j++) periodos.push({ ini: g.ini + 45 * j, fim: g.ini + 45 * (j + 1) }); }
       else {
         for (let j = 0; j < g.ch; j++) {
-          const s = slots[k + j];
+          const s = gradeDia[k + j];
           if (!s) { avisar("erro", "Períodos além da grade", `${g.disciplina} (${g.turma}, ${NOME_DIA[g.dia]} ${hhmm(g.ini)}): ${g.ch} períodos passam do último horário do dia.`, g.local); break; }
           if (j > 0 && s.ini - periodos[j - 1].fim > 50) avisar("duvida", "Aula atravessa intervalo", `${g.disciplina} (${g.turma}, ${NOME_DIA[g.dia]}): os ${g.ch} períodos a partir de ${hhmm(g.ini)} atravessam o intervalo entre ${hhmm(periodos[j - 1].fim)} e ${hhmm(s.ini)}.`, g.local);
-          periodos.push({ ini: s.ini, fim: s.fim });
+          periodos.push({ ini: s.ini, fim: s.fim, base: slots[k + j].ini });
         }
       }
     } else {
@@ -378,6 +430,7 @@ export function interpretar(abas, opcoes = {}) {
     if (!periodos.length) continue;
     aulas.push({ ...g, periodos, fim: periodos[periodos.length - 1].fim });
   }
+  if (ajustadasQuarta) avisar("info", "Intervalos diferenciados", `${ajustadasQuarta} aula(s) de ${NOME_DIA[diaEspecial]} tinham na planilha o horário dos outros dias e foram colocadas no horário diferenciado (${MOTIVO_DIA_ESPECIAL}).`);
 
   // ---- 4. repetidos e conflitos (por período)
   const vistos = new Map();
@@ -474,7 +527,7 @@ export function interpretar(abas, opcoes = {}) {
     conferidos.blocos++;
     const mapaEsperado = new Map();
     for (const a of esperado) for (const p of a.periodos) {
-      const k = `${a.dia}|${p.ini}`;
+      const k = `${a.dia}|${p.base ?? p.ini}`;
       if (!mapaEsperado.has(k)) mapaEsperado.set(k, new Map());
       for (const v of leitura(a)) mapaEsperado.get(k).set(v.replace(/[.\s]+$/, ""), a.disciplina);
     }
@@ -585,6 +638,8 @@ export function interpretar(abas, opcoes = {}) {
     dataPlanilha: [...datasPublicacao][0] || "",
     publicadoEm: null,
     periodos: slots.map((s) => [hhmm(s.ini), hhmm(s.fim)]),
+    periodosPorDia: quartaEspecial ? { [diaEspecial]: slotsQuarta.map((s) => [hhmm(s.ini), hhmm(s.fim)]) } : {},
+    motivoDiaEspecial: quartaEspecial ? MOTIVO_DIA_ESPECIAL : "",
     cursos: [...new Set(aulas.map((a) => a.curso))].sort(comparar),
     pesoPorCurso: regras,
     turmas,
