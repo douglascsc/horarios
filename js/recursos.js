@@ -1,6 +1,6 @@
 // Recursos auxiliares da consulta: arquivo de agenda (.ics) e comparação
 // entre duas versões de um período (o que mudou).
-import { normalizar } from "./interpretar.js?v=20261009r";
+import { normalizar } from "./interpretar.js?v=20261009s";
 
 // ---------------------------------------------------------------- agenda (.ics)
 const DIA_SEMANA = { seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
@@ -62,7 +62,7 @@ export function gerarIcs({ aulas, nomeCalendario, inicio, fim, idBase }) {
 
 // ---------------------------------------------------------------- comparação de versões
 export const chaveAula = (a) => [a.turma, a.dia, a.inicio, normalizar(a.disciplina)].join("|");
-export const detalheAula = (a) => `${(a.professores || []).join(", ") || "sem professor"}${a.sala ? ", sala " + a.sala : ""}`;
+export const detalheAula = (a, prof = (n) => n) => `${(a.professores || []).map(prof).join(", ") || "sem professor"}${a.sala ? ", sala " + a.sala : ""}`;
 export function compararVersoes(antigas, novas) {
   const mapaA = new Map(antigas.map((a) => [chaveAula(a), a]));
   const mapaN = new Map(novas.map((a) => [chaveAula(a), a]));
@@ -122,4 +122,23 @@ export function gerarXlsx({ nomeAba, cabecalho, linhas }) {
     ["xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2B7A40"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
     ["xl/worksheets/sheet1.xml", sheet],
   ]);
+}
+
+// ---------------------------------------------------------------- tratamento dos professores
+// O título (Prof., Prof.ª, Prof.(a)) só aparece na tela: na planilha e nos
+// dados o nome continua como está. Vale o que a coordenação confirmou
+// (dados/professores.json); sem confirmação, "Prof.(a)".
+export const TITULO_PROF = { m: "Prof.", f: "Prof.ª", "": "Prof.(a)" };
+export const chaveProf = (nome) => String(nome || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+export function comTitulo(nome, tratamento) {
+  if (!nome || nome === "Sem professor") return nome;
+  return `${TITULO_PROF[(tratamento || {})[chaveProf(nome)]] || TITULO_PROF[""]} ${nome}`;
+}
+// Sugestão para a coordenação conferir (nunca vai para o site sem
+// confirmação): só nomes comuns e sem ambiguidade; o resto fica "Prof.(a)".
+const NOMES_F = new Set("adriana alessandra alice aline amanda ana angela angelica aurora barbara beatriz bianca bruna camila carine carla carolina caroline cassia catarina cecilia cintia clara clarice claudia cleusa cristiane cristina daiana daiane daniela debora denise diana dirce edilaine edna eduarda elaine eliana eliane elisa elisangela estela eva fabiana fabiola fatima fernanda flavia franciele francieli francine gabriela gabriele giovana gisele glaucia gloria graziela helena heloisa iara ieda ines ingrid irene isabel isabela ivete ivone jamile janaina jane jaqueline jessica joana jociane joice joseane josiane josiele joyce julia juliana jussara karen karina karla katia keila kelly lais lara larissa laura leila leticia lidiane lilian liliane lisiane livia lorena luana lucia luciana luciane luisa luiza manuela marcia maria mariana marilene marina marisa marlene marli marta melissa michele michelle milena miriam mirian monica nadia naiara nair naira natalia neiva neusa noemi odete olga pamela patricia paula priscila priscilla rafaela raquel regina rejane renata rita roberta rosa rosana rosane rosangela roseli rosemary rosemeri sabrina sabrine samanta sandra sara scheila sheila silvana silvia simone sirlei solange sonia stela sueli susana suzana tais tania tatiana tatiane teresa tereza thais valeria vanessa vania vera veronica vilma vitoria vivian viviane yasmin zelia".split(" "));
+const NOMES_M = new Set("ademir adriano airton alan alberto alcides alessandro alex alexandre alvaro anderson andre antonio ari arnaldo arthur artur augusto benjamin bruno caio carlo carlos cassiano celso cesar claudio cleber clovis cristiano daniel dario davi david denis diego diogo douglas eder ederson edgar edson eduardo elias elton elvis emerson enzo erico evandro everton fabiano fabio fabricio fausto felipe felix fernando flavio francisco frederico gabriel gelson geraldo gilberto gilmar giovani guilherme gustavo heitor henrique hugo igor ismael ivan ivo jaime jair jairo jardel jeferson jefferson joao joaquim joel jonas jorge jose josue juarez juliano julio lauro leandro leo leomar leonardo lisandro luan lucas luciano luis luiz manoel manuel marcelo marcio marco marcos mario marlon mateus matheus mathias mauricio mauro miguel moises murilo nelson neri nicolas norberto odair olavo orlando osmar otavio otto patrick paulo pedro rafael raul reinaldo renan renato ricardo roberto rodolfo rodrigo rogerio romeu ronaldo ruben rubens rui samuel sandro saulo sebastiao sergio sidnei sidney silvano silvio tadeu tales teodoro thales thiago tiago tomas ulisses vagner valdir valmir valter vanderlei vasco vicente victor vilson vinicius vitor volnei wagner walter william wilson".split(" "));
+export function sugerirTratamento(nome) {
+  const primeiro = chaveProf(nome).split(/[\s.]/)[0];
+  return NOMES_F.has(primeiro) ? "f" : NOMES_M.has(primeiro) ? "m" : "";
 }

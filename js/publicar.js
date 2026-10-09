@@ -13,7 +13,7 @@ export const TAMANHO_MINIMO_SENHA = 10;
 export const ARQUIVO_CONFIG = "dados/publicacao.json";
 export const ARQUIVO_DADOS = "dados/horarios.json"; // formato antigo (um período só), ainda lido se não houver índice
 
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009r";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009s";
 
 export class ErroPublicacao extends Error {}
 
@@ -140,6 +140,7 @@ export async function trocarSenha(config, senhaAtual, senhaNova) {
 // renomear, tornar padrão) vira UM commit só, pela API "Git Data" do
 // GitHub: ou tudo é gravado, ou nada muda.
 export const MAX_PERIODOS = 3;
+export const ARQUIVO_TRATAMENTO = "dados/professores.json"; // Prof. / Prof.ª, vale para todos os períodos
 export const ARQUIVO_INDICE = "dados/periodos.json";
 export const arquivoDoPeriodo = (id) => `dados/periodos/${id}.json`;
 
@@ -289,6 +290,19 @@ export async function alterarPeriodos(config, senha, op) {
   return { indice: novoIndice, link, dados: dadosPlanos };
 }
 
+// Tratamento dos professores: { "<nome sem acento, minúsculo>": "m" | "f" }.
+// Quem não está na lista aparece como "Prof.(a)".
+export async function salvarTratamento(config, senha, professores) {
+  const token = await decifrarToken(config, senha);
+  await conferirConfigRemota(token, config);
+  const chaveLeitura = await chaveLeituraDaConfig(config, senha);
+  const limpo = {};
+  for (const [k, v] of Object.entries(professores || {})) if (v === "m" || v === "f") limpo[k] = v;
+  const obj = { versao: 1, atualizadoEm: new Date().toISOString(), professores: limpo };
+  await gravarCommit(token, config.repo, config.ramo || "main", [{ caminho: ARQUIVO_TRATAMENTO, conteudo: await conteudoDados(obj, chaveLeitura, true) }], "Atualiza o tratamento dos professores (Prof., Prof.ª)");
+  return obj;
+}
+
 // ---------------------------------------------------------------- senha de leitura
 // Liga, troca ou desliga a proteção: regrava o índice e todos os períodos
 // (cifrados ou não), o dados/leitura.json e a configuração, num commit só.
@@ -303,6 +317,8 @@ async function regravarTudo(config, senha, { chaveAtual, chaveNova, leituraNova,
     if (dados) mudancas.push({ caminho: p.arquivo, conteudo: await conteudoDados(dados, chaveNova) });
   }
   mudancas.push({ caminho: ARQUIVO_INDICE, conteudo: await conteudoDados({ ...indice, versao: 2 }, chaveNova, true) });
+  const tratamento = await lerJsonRemoto(token, repo, ramo, ARQUIVO_TRATAMENTO, chaveAtual);
+  if (tratamento) mudancas.push({ caminho: ARQUIVO_TRATAMENTO, conteudo: await conteudoDados(tratamento, chaveNova, true) });
   if (leituraNova) mudancas.push({ caminho: ARQUIVO_LEITURA, conteudo: JSON.stringify(leituraNova, null, 1) + "\n" });
   if (apagarLeitura) mudancas.push({ caminho: ARQUIVO_LEITURA, conteudo: null });
   const novaConfig = { ...config };

@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009r";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009r";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009s";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009s";
 import {
-  alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, chaveLeituraDaConfig, PEDE_SENHA_LEITURA, idDoPeriodo, ErroPublicacao,
+  alterarPeriodos, salvarTratamento, ARQUIVO_TRATAMENTO, salvarConfiguracao, trocarSenha, decifrarToken, chaveLeituraDaConfig, PEDE_SENHA_LEITURA, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009r";
-import { gerarArquivoOffline } from "./offline.js?v=20261009r";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009r";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009r";
+} from "./publicar.js?v=20261009s";
+import { gerarArquivoOffline } from "./offline.js?v=20261009s";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009s";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto, comTitulo, chaveProf, sugerirTratamento, TITULO_PROF } from "./recursos.js?v=20261009s";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -54,6 +54,7 @@ const estado = {
   dadosPorPeriodo: new Map(), // id -> dados (carregados sob demanda)
   periodoId: "",         // período em consulta
   config: null,          // dados/publicacao.json
+  tratamento: {},        // dados/professores.json: { nome sem acento: "m" | "f" }
   senhaAdmin: "",        // senha de publicação digitada ao entrar (só na memória desta aba)
   importacao: null,      // resultado de interpretar() da planilha enviada
   previa: false,
@@ -222,9 +223,11 @@ async function iniciar() {
   ligarEtapas();
   ligarPortaoAdmin();
   ligarBotoesInfo();
+  $("btn-salvar-professores").addEventListener("click", aoSalvarTratamento);
   $("form-leitura").addEventListener("submit", aoMudarLeitura);
   $("form-leitura-remover").addEventListener("submit", aoRemoverLeitura);
   const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
+  await carregarTratamento();
   estado.config = config && config.token && config.sal ? config : null;
   atualizarConfigUI();
   await aoMudarEndereco();
@@ -255,6 +258,7 @@ async function aoMudarEndereco() {
   if (estado.indiceTrancado) {
     // entrou direto no administrador e agora quer ver a consulta
     await abrirIndiceProtegido();
+    await carregarTratamento();
     if (!periodoPorId(estado.periodoId)) estado.periodoId = periodoPadrao();
   }
   if (!estado.previa) await garantirPeriodo(estado.periodoId);
@@ -323,6 +327,7 @@ async function arquivosPublicados() {
     if (!d) throw new Error(`Não foi possível carregar o período ${p.nome}.`);
     arquivos[p.arquivo] = d;
   }
+  arquivos[ARQUIVO_TRATAMENTO] = { versao: 1, professores: estado.tratamento };
   return { arquivos, nome: "" };
 }
 // só a planilha enviada na área do administrador, sem publicar nada
@@ -333,7 +338,7 @@ async function arquivosDaPlanilha() {
   const dados = { ...dadosParaPublicar(), periodo: { id, nome } };
   const caminho = `dados/periodos/${id}.json`;
   const indice = { versao: 2, padrao: id, periodos: [{ id, nome, descricao: $("dest-descricao").value.trim(), arquivo: caminho, publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length, inicioAulas: $("dest-inicio-aulas").value, fimAulas: $("dest-fim-aulas").value, recado: $("dest-recado").value.trim() }] };
-  return { arquivos: { [ARQUIVO_INDICE]: indice, [caminho]: dados }, nome: id };
+  return { arquivos: { [ARQUIVO_INDICE]: indice, [caminho]: dados, [ARQUIVO_TRATAMENTO]: { versao: 1, professores: estado.tratamento } }, nome: id };
 }
 async function baixarVersaoOffline(botao, montar) {
   const span = botao.querySelector("span");
@@ -383,7 +388,14 @@ function baixarArquivo(blob, nome) {
 }
 const nomeArquivo = (t) => normalizar(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "horario";
 
-const nomeDoGrupo = (tipo, chave) => (tipo === "turma" ? `Turma ${chave}` : tipo === "sala" ? `Sala ${chave}` : chave);
+// nome do professor com o título confirmado (Prof., Prof.ª; sem confirmação, Prof.(a))
+const prof = (nome) => comTitulo(nome, estado.tratamento);
+const comTitulos = (a) => ({ ...a, professores: (a.professores || []).map(prof) });
+async function carregarTratamento() {
+  const t = await carregarJson(ARQUIVO_TRATAMENTO);
+  estado.tratamento = t && t.professores && typeof t.professores === "object" ? t.professores : {};
+}
+const nomeDoGrupo = (tipo, chave) => (tipo === "turma" ? `Turma ${chave}` : tipo === "sala" ? `Sala ${chave}` : tipo === "professor" ? prof(chave) : chave);
 
 // ---- agenda (.ics)
 function segundaDestaSemana() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; }
@@ -407,7 +419,7 @@ function abrirAgenda(tipo, chave, aulas) {
     el("div", { class: "linha-acoes" },
       el("button", { type: "button", class: "botao botao-primario", onclick: () => {
         if (!ini.value || !fim.value || ini.value > fim.value) { msg.textContent = "Confira as datas: o início precisa ser antes do fim."; return; }
-        const r = gerarIcs({ aulas: presenciais, nomeCalendario: nomeCal, inicio: ini.value, fim: fim.value, idBase: `${estado.periodoId}-${nomeArquivo(chave)}` });
+        const r = gerarIcs({ aulas: presenciais.map(comTitulos), nomeCalendario: nomeCal, inicio: ini.value, fim: fim.value, idBase: `${estado.periodoId}-${nomeArquivo(chave)}` });
         baixarArquivo(new Blob([r.texto], { type: "text/calendar;charset=utf-8" }), `horario-${nomeArquivo(chave)}.ics`);
         msg.textContent = `Arquivo baixado com ${plural(r.eventos, "aula semanal", "aulas semanais")}.`;
       } }, icone("calendar-days"), "Baixar para a agenda (.ics)")),
@@ -698,7 +710,7 @@ function renderConsulta() {
   // turmas limitadas ao curso escolhido
   const turmas = f.curso ? idx.turmas.filter((t) => idx.aulas.some((a) => a.turma === t && a.curso === f.curso)) : idx.turmas;
   f.turma = preencherSelect($("filtro-turma"), turmas, f.turma, "Todas");
-  f.professor = preencherSelect($("filtro-professor"), idx.professores, f.professor, "Todos");
+  f.professor = preencherSelect($("filtro-professor"), idx.professores, f.professor, "Todos", prof);
   f.sala = preencherSelect($("filtro-sala"), idx.salas, f.sala, "Todas");
   f.turno = preencherSelect($("filtro-turno"), idx.turnos, f.turno, "Todos", (t) => NOME_TURNO[t]);
 
@@ -735,7 +747,7 @@ function renderConsulta() {
   // título conforme a escolha
   let titulo = "Consulte os horários", desc = "Pesquise ou filtre por curso, turma, professor, sala, turno e dia.";
   if (f.turma) { titulo = `Turma ${f.turma}`; desc = "Horário semanal da turma."; }
-  else if (f.professor) { titulo = f.professor; desc = "Horário semanal do professor."; }
+  else if (f.professor) { titulo = prof(f.professor); desc = "Horário semanal do professor."; }
   else if (f.sala) { titulo = `Sala ${f.sala}`; desc = "Ocupação semanal da sala."; }
   else if (f.curso) { titulo = `Curso ${f.curso}`; desc = "Turmas do curso. Escolha uma turma para ver só o horário dela."; }
   if (f.mudou) { titulo = "Mudanças recentes"; desc = `Aulas novas ou alteradas na atualização de ${dataBr(dados.mudancas.em)}${dados.mudancas.de ? " (comparado com a versão anterior)" : ""}.`; }
@@ -766,7 +778,8 @@ function chip(texto, ativo, aoClicar, n) {
 
 function filtrar(idx) {
   const f = estado.filtros;
-  const termos = normalizar(f.q).split(" ").filter(Boolean);
+  // "Prof.", "Prof.ª", "Profa." na busca não atrapalham: o nome é que conta
+  const termos = normalizar(f.q).split(" ").filter((t) => t && !/^prof(\.|a\.?|\.?ª|\.?\(a\))?$/.test(t));
   return idx.aulas.filter((a) =>
     (!f.curso || a.curso === f.curso) &&
     (!f.turma || a.turma === f.turma) &&
@@ -896,6 +909,7 @@ function renderGrupo(g, idx, dados) {
     meta = partes.join(" · ");
   } else if (tipo === "dia") nome = NOME_DIA[g.chave] || g.chave;
   else if (tipo === "sala" && /^\d/.test(g.chave)) nome = `Sala ${g.chave}`;
+  else if (tipo === "professor") nome = prof(g.chave);
   const { reais, contados } = contarPeriodos(g.aulas, dados, idx);
   const txtPeriodos = contados !== reais
     ? `${plural(contados, "período", "períodos")} (PCP conta em dobro)`
@@ -954,7 +968,7 @@ function cartaoAula(a, { comDia = false } = {}) {
   const tipo = estado.agrupar;
   const meta = el("div", { class: "aula-meta" });
   if (tipo !== "turma") meta.append(el("span", { title: "Turma" }, icone("users"), a.turma));
-  if (tipo !== "professor" || (a.professores || []).length > 1) meta.append(el("span", { title: "Professor" }, icone("user"), (a.professores || []).join(", ") || "Sem professor"));
+  if (tipo !== "professor" || (a.professores || []).length > 1) meta.append(el("span", { title: "Professor" }, icone("user"), (a.professores || []).map(prof).join(", ") || "Sem professor"));
   if (a.dia === "ead") meta.append(el("span", { title: "A distância" }, icone("monitor"), "EaD"));
   else if (tipo !== "sala" || a.salas.length > 1) meta.append(el("span", { title: "Sala" }, icone("map-pin"), a.sala ? `Sala ${a.sala}` : "Sem sala"));
   const sit = situacaoAgora(a);
@@ -1097,7 +1111,7 @@ function baixarExcel() {
   const nomeP = estado.previa ? (dados.periodo && dados.periodo.nome) || "prévia" : p ? p.nome : "";
   const comPeso = aulas.some((a) => (a.peso || 1) !== 1);
   const cabecalho = ["Período letivo", "Dia", "Início", "Fim", "Períodos", ...(comPeso ? ["Períodos (contagem)"] : []), "Turma", "Curso", "Disciplina", "Professor(es)", "Sala", "Turno"];
-  const linhas = aulas.map((a) => [nomeP, NOME_DIA[a.dia], a.inicio, a.fim, a.periodos || 1, ...(comPeso ? [(a.periodos || 1) * (a.peso || 1)] : []), a.turma, a.curso, a.disciplina, (a.professores || []).join(", "), a.sala || (a.dia === "ead" ? "EaD" : ""), NOME_TURNO[a.turno] || ""]);
+  const linhas = aulas.map((a) => [nomeP, NOME_DIA[a.dia], a.inicio, a.fim, a.periodos || 1, ...(comPeso ? [(a.periodos || 1) * (a.peso || 1)] : []), a.turma, a.curso, a.disciplina, (a.professores || []).map(prof).join(", "), a.sala || (a.dia === "ead" ? "EaD" : ""), NOME_TURNO[a.turno] || ""]);
   const desc = descricaoFiltros(estado.filtros);
   const blob = gerarXlsx({ nomeAba: desc || "Horários", cabecalho, linhas });
   baixarArquivo(blob, `horarios-${nomeArquivo(desc || "completo")}${nomeP ? "-" + nomeArquivo(nomeP) : ""}.xlsx`);
@@ -1141,7 +1155,7 @@ async function renderComparacaoPeriodos(aulasA) {
     bloco(`Só em ${pB.nome}`, "Aulas que aparecem no outro período e não neste.", ordem(c.novas), (a) => cartaoAula(a, { comDia: true })),
     bloco(`Só em ${pA ? pA.nome : ""}`, "Aulas deste período que não existem no outro.", ordem(c.removidas), (a) => cartaoAula(a, { comDia: true })),
     bloco("Mudaram", `Mesma turma, dia, horário e disciplina, com outro professor, sala ou término em ${pB.nome}.`, c.mudadas.sort((x, y) => DIAS.indexOf(x[1].dia) - DIAS.indexOf(y[1].dia) || minutos(x[1].inicio) - minutos(y[1].inicio)),
-      ([a, b]) => comNota(b, `Em ${pA ? pA.nome : ""}: ${detalheAula(a)}${a.fim !== b.fim ? ", até " + a.fim : ""}`)));
+      ([a, b]) => comNota(b, `Em ${pA ? pA.nome : ""}: ${detalheAula(a, prof)}${a.fim !== b.fim ? ", até " + a.fim : ""}`)));
 }
 
 // ---- barra fixa no celular: Filtros, Agora, Hoje e Topo à mão
@@ -1191,7 +1205,7 @@ const CHAVE_MEU = "horarios-meu";
 function descricaoFiltros(f) {
   const partes = [];
   if (f.turma) partes.push(`Turma ${f.turma}`);
-  if (f.professor) partes.push(f.professor);
+  if (f.professor) partes.push(prof(f.professor));
   if (f.sala) partes.push(`Sala ${f.sala}`);
   if (f.curso && !f.turma) partes.push(`Curso ${f.curso}`);
   if (f.turno) partes.push(NOME_TURNO[f.turno]);
@@ -1256,7 +1270,7 @@ function mostrarRecuperacao() {
   $("portao-admin").hidden = true;
   $("admin-conteudo").hidden = false;
   $("btn-admin-sair").hidden = true;
-  for (const id of ["etapas", "nav-etapas", "sec-envio", "sec-periodos", "sec-revisao", "sec-leitura", "sec-destino", "sec-publicar", "bloco-trocar-senha", "bloco-leitura"]) $(id).hidden = true;
+  for (const id of ["etapas", "nav-etapas", "sec-envio", "sec-periodos", "sec-professores", "sec-revisao", "sec-leitura", "sec-destino", "sec-publicar", "bloco-trocar-senha", "bloco-leitura"]) $(id).hidden = true;
   $("sec-config").hidden = false;
   $("detalhes-config").open = true;
   $("cfg-leitura-wrap").hidden = !estado.leitura;
@@ -1288,7 +1302,7 @@ async function destrancarIndiceDoAdmin() {
     if (!chave) return;
     estado.chaveLeitura = chave; // só na memória: não fica "lembrada" no aparelho
     const indice = await carregarJson(ARQUIVO_INDICE);
-    if (indice && Array.isArray(indice.periodos)) { estado.indice = indice; estado.indiceTrancado = false; }
+    if (indice && Array.isArray(indice.periodos)) { estado.indice = indice; estado.indiceTrancado = false; await carregarTratamento(); }
     else estado.chaveLeitura = null;
   } catch { estado.chaveLeitura = null; }
 }
@@ -1434,6 +1448,7 @@ function renderEtapas(aviso = "") {
   $("nav-etapas").hidden = !imp || n === 1;
   $("sec-envio").hidden = !!imp && n !== 1;
   $("sec-periodos").hidden = !!imp && n !== 1;
+  $("sec-professores").hidden = (!!imp && n !== 1) || !estado.config;
   $("sec-config").hidden = !!imp && n > 1 && !!estado.config; // durante a importação, só se ainda faltar configurar
   $("sec-revisao").hidden = n !== 2;
   $("sec-leitura").hidden = n !== 2;
@@ -1467,7 +1482,11 @@ function renderResumoPublicar() {
       el("li", null, el("strong", { text: "Revisão: " }), `${plural(c.erro, "erro", "erros")}, ${plural(c.divergencia, "divergência", "divergências")}, ${plural(c.duvida, "dúvida", "dúvidas")}`),
       el("li", null, el("strong", { text: "Intervalos diferenciados: " }), (() => { const d = imp.opcoes.diaEspecial === undefined ? DIA_ESPECIAL_PADRAO : imp.opcoes.diaEspecial; return d ? `${NOME_DIA[d]} (${MOTIVO_DIA_ESPECIAL})` : "nenhum dia"; })()),
       $("dest-recado").value.trim() ? el("li", null, el("strong", { text: "Recado: " }), $("dest-recado").value.trim()) : null,
-      $("dest-inicio-aulas").value && $("dest-fim-aulas").value ? el("li", null, el("strong", { text: "Aulas: " }), `de ${dataBr($("dest-inicio-aulas").value + "T12:00")} a ${dataBr($("dest-fim-aulas").value + "T12:00")}`) : null));
+      $("dest-inicio-aulas").value && $("dest-fim-aulas").value ? el("li", null, el("strong", { text: "Aulas: " }), `de ${dataBr($("dest-inicio-aulas").value + "T12:00")} a ${dataBr($("dest-fim-aulas").value + "T12:00")}`) : null,
+      (() => {
+        const sem = new Set(imp.dados.aulas.flatMap((a) => a.professores || []).filter((n) => !estado.tratamento[chaveProf(n)]).map(chaveProf)).size;
+        return sem ? el("li", null, el("strong", { text: "Tratamento: " }), `${plural(sem, "professor ainda aparece", "professores ainda aparecem")} como Prof.(a). Depois de publicar, defina em “Tratamento dos professores”.`) : null;
+      })()));
 }
 function ligarEtapas() {
   $("etapas").addEventListener("click", (e) => { const b = e.target.closest("button[data-passo]"); if (b) irPasso(Number(b.dataset.passo)); });
@@ -1750,7 +1769,7 @@ async function renderComparacao() {
   const antigos = estado.dadosPorPeriodo.get(sai.id);
   if (!antigos) { box.replaceChildren(el("p", { class: "texto-pequeno", text: `Não foi possível carregar ${sai.nome} para comparar.` })); return; }
   const desc = (a) => `${a.turma} · ${NOME_DIA[a.dia]} ${a.inicio}–${a.fim} · ${a.disciplina}`;
-  const detalhe = detalheAula;
+  const detalhe = (a) => detalheAula(a, prof);
   const { novas, removidas, mudadas, iguais } = compararVersoes(antigos.aulas, estado.importacao.dados.aulas);
   const bloco = (titulo, itens, fmt, classe) => !itens.length ? null : el("details", { class: "categoria" },
     el("summary", null, el("span", { class: `marcador ${classe}` }), titulo, el("span", { class: "qtd", text: `(${itens.length})` }), icone("chevron-down", "chev")),
@@ -1840,7 +1859,63 @@ function ligarBotoesInfo() {
 
 // ---------------------------------------------------------------- períodos publicados (gerenciar)
 let acaoPeriodo = null; // { tipo, id }
+// ---------------------------------------------------------------- tratamento dos professores
+// Lista todos os professores (períodos publicados + planilha enviada) com
+// Prof. / Prof.ª / Prof.(a). Sem nada salvo, o site sugere pelo nome, mas a
+// sugestão só vale depois que a coordenação salvar.
+async function nomesDeProfessores() {
+  const nomes = new Map();
+  for (const p of periodos()) {
+    await garantirPeriodo(p.id);
+    const d = estado.dadosPorPeriodo.get(p.id);
+    if (d) for (const a of d.aulas) for (const n of a.professores || []) if (!nomes.has(chaveProf(n))) nomes.set(chaveProf(n), n);
+  }
+  if (estado.importacao) for (const a of estado.importacao.dados.aulas) for (const n of a.professores || []) if (!nomes.has(chaveProf(n))) nomes.set(chaveProf(n), n);
+  return [...nomes].sort((x, y) => comparar(x[1], y[1]));
+}
+async function renderProfessoresAdmin() {
+  if (!estado.config) { $("sec-professores").hidden = true; return; }
+  const lista = await nomesDeProfessores();
+  const definidos = lista.filter(([k]) => estado.tratamento[k]).length;
+  $("professores-resumo").textContent = lista.length ? (definidos === lista.length ? `${lista.length} definidos` : `${lista.length - definidos} sem definição`) : "";
+  $("professores-resumo").className = `selo-pequeno ${definidos === lista.length ? "ok" : "pendente"}`;
+  $("btn-salvar-professores").hidden = !lista.length;
+  $("lista-professores").replaceChildren(...(lista.length ? lista.map(([k, nome]) => {
+    const salvo = estado.tratamento[k] || "";
+    const sugestao = salvo ? "" : sugerirTratamento(nome);
+    const id = "trat-" + k.replace(/[^a-z0-9]+/g, "-");
+    const sel = el("select", { id, class: "text-field", "data-chave": k },
+      ...[["m", TITULO_PROF.m], ["f", TITULO_PROF.f], ["", TITULO_PROF[""] + " (não definido)"]].map(([v, t]) => el("option", { value: v, text: t })));
+    sel.value = salvo || sugestao;
+    const marca = el("span", { class: "marca-sugestao", text: "sugestão", hidden: !sugestao });
+    sel.addEventListener("change", () => { marca.hidden = true; });
+    return el("div", { class: "linha-professor" }, el("label", { for: id, text: nome }), marca, sel);
+  }) : [el("p", { class: "texto-pequeno", text: "Nenhum professor ainda: publique ou envie uma planilha." })]));
+}
+async function aoSalvarTratamento() {
+  if (!estado.config) return;
+  const espera = bloqueio();
+  if (espera) { mensagem("msg-professores", "error", `Muitas tentativas com senha errada. Aguarde ${espera} s.`); return; }
+  if (!estado.senhaAdmin) { mensagem("msg-professores", "error", "Entre de novo na área do administrador para salvar."); return; }
+  const mapa = { ...estado.tratamento };
+  for (const s of $("lista-professores").querySelectorAll("select[data-chave]")) { if (s.value) mapa[s.dataset.chave] = s.value; else delete mapa[s.dataset.chave]; }
+  const botao = $("btn-salvar-professores");
+  ocupado(botao, true, "Salvando…");
+  try {
+    const r = await salvarTratamento(estado.config, estado.senhaAdmin, mapa);
+    estado.tratamento = r.professores;
+    guardar.gravar("horarios-erros", "0");
+    await renderProfessoresAdmin();
+    mensagem("msg-professores", "success", "Tratamento salvo. O site público é atualizado em cerca de 1 minuto.");
+  } catch (err) {
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") senhaRecusada();
+    mensagem("msg-professores", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível salvar. Nada foi alterado.");
+    if (!(err instanceof ErroPublicacao)) console.error(err);
+  } finally { ocupado(botao, false); }
+}
+
 function renderPeriodosAdmin() {
+  renderProfessoresAdmin();
   const lista = $("lista-periodos");
   const ps = periodos();
   $("periodos-vagas").textContent = `${ps.filter((p) => !p.legado).length} de ${MAX_PERIODOS} espaços ocupados.`;

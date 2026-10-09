@@ -10,10 +10,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009r"></script>
-  <script src="js/icones.js?v=20261009r"></script>
+  <script src="js/protecao.js?v=20261009s"></script>
+  <script src="js/icones.js?v=20261009s"></script>
   <link rel="preload" href="fontes/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/estilo.css?v=20261009r">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009s">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,13 +21,13 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="modulepreload" href="js/interpretar.js?v=20261009r">
-  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009r">
-  <link rel="modulepreload" href="js/publicar.js?v=20261009r">
-  <link rel="modulepreload" href="js/recursos.js?v=20261009r">
-  <link rel="modulepreload" href="js/offline.js?v=20261009r">
-  <link rel="modulepreload" href="js/leitura.js?v=20261009r">
-  <script type="module" src="js/app.js?v=20261009r"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009s">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009s">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009s">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009s">
+  <link rel="modulepreload" href="js/offline.js?v=20261009s">
+  <link rel="modulepreload" href="js/leitura.js?v=20261009s">
+  <script type="module" src="js/app.js?v=20261009s"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -212,6 +212,18 @@
        </div>
        <div id="msg-periodos" class="notice" style="margin-top:1rem" hidden role="status"></div>
        <div id="lista-periodos" class="lista-periodos"></div>
+      </section>
+
+      <section id="sec-professores" class="glass-surface reveal">
+       <details id="detalhes-professores" class="detalhes-config">
+        <summary><i data-lucide="users"></i> Tratamento dos professores <span id="professores-resumo" class="selo-pequeno"></span> <i data-lucide="chevron-down" class="chev"></i></summary>
+        <p class="subtitulo">Escolha como cada nome aparece no site: <strong>Prof.</strong>, <strong>Prof.ª</strong> ou <strong>Prof.(a)</strong>. Vale para todos os períodos. Enquanto não for salvo, o professor aparece como Prof.(a). Os marcados como <em>sugestão</em> foram preenchidos pelo site a partir do nome: confira antes de salvar.</p>
+        <div id="lista-professores" class="lista-professores"></div>
+        <div class="linha-acoes">
+         <button id="btn-salvar-professores" class="botao botao-primario" type="button"><i data-lucide="check"></i> <span>Salvar tratamento</span></button>
+        </div>
+        <div id="msg-professores" class="notice" style="margin-top:1rem" hidden role="status"></div>
+       </details>
       </section>
 
       <section id="sec-revisao" class="glass-surface reveal" hidden>

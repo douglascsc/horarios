@@ -30,6 +30,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - **Comparar períodos**: com dois ou mais períodos, o botão "Comparar" mostra, com os filtros atuais, o que só existe num, o que só existe no outro e o que mudou de professor, sala ou término (ex.: o horário de um professor em 2026/2 × 2027/1).
 - **Excel**: "Excel" baixa um `.xlsx` só com as aulas filtradas (dia, horário, turma, curso, disciplina, professor, sala e turno), pronto para filtrar e somar.
 - **Barra fixa no celular**: atalhos sempre à mão para Filtros (com o número de filtros ativos), Agora, Hoje e Topo. Ela some enquanto se digita.
+- **Prof. / Prof.ª**: o nome de cada professor aparece com o título (Prof., Prof.ª ou, se não definido, Prof.(a)) nos quadros, nas aulas, no filtro, na impressão, no Excel, na agenda e na versão offline. A coordenação define o tratamento em "Tratamento dos professores", na área do administrador. Ali o site sugere pelo nome (só nomes comuns e sem ambiguidade), mas **nada aparece no site antes de a coordenação salvar**. O tratamento fica em `dados/professores.json` (vale para todos os períodos) e, na planilha e nos dados das aulas, o nome continua como está. A busca encontra o professor com ou sem o título.
 - **Salas livres**: escolha o dia e o horário (por padrão, o período atual) e veja as salas sem aula nesse intervalo, com "livre até…". É só uma indicação: o aviso da janela lembra que **a sala deve ser consultada e agendada no SUAP**, porque a lista não conhece reservas, eventos nem salas que não aparecem no horário.
 - **Impressão**: um quadro por página, ajustado à folha A4 deitada, com o título, o período e a data. O botão "Imprimir" de um quadro imprime só ele; o da barra imprime todos.
 
@@ -127,6 +128,7 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 
 - `dados/periodos.json`: índice dos períodos letivos (até 3) e qual é o atual.
 - `dados/periodos/<id>.json`: os horários de cada período, como `2026-2.json`.
+- `dados/professores.json`: o tratamento de cada professor (Prof. ou Prof.ª), definido pela coordenação.
 - `dados/publicacao.json`: a configuração de publicação, com o token **cifrado**. Só existe depois de configurada.
 - `js/leitor-xlsx.js`: leitor próprio de `.xlsx` (zip + XML).
 - `js/interpretar.js`: interpretação e revisão. É uma função pura, que também roda no Node.
