@@ -119,6 +119,8 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 
 **Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, renomear, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
 
+**Versão dos arquivos:** `index.html` e `js/app.js` carregam os scripts e o CSS com `?v=AAAAMMDD…`. Ao mudar o código, troque esse número nos dois arquivos, para os navegadores não juntarem código novo com código antigo guardado em cache.
+
 **Consumo:** quem consulta só baixa os arquivos do período que abriu, uma vez. Os destaques "agora" e "começa em" são recalculados no próprio navegador e não fazem requisições. A API do GitHub só é usada quando o administrador publica.
 
 ## Senha de publicação
