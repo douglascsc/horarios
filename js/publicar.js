@@ -11,7 +11,7 @@
 const ITERACOES = 600000;
 export const TAMANHO_MINIMO_SENHA = 10;
 export const ARQUIVO_CONFIG = "dados/publicacao.json";
-export const ARQUIVO_DADOS = "dados/horarios.json";
+export const ARQUIVO_DADOS = "dados/horarios.json"; // formato antigo (um período só), ainda lido se não houver índice
 
 export class ErroPublicacao extends Error {}
 
@@ -60,7 +60,7 @@ async function github(token, metodo, caminho, corpo) {
     try { msg = (await resp.json()).message || ""; } catch { /* sem corpo */ }
     if (resp.status === 401) throw new ErroPublicacao("O token do GitHub foi recusado (expirou ou foi revogado). Refaça a configuração da publicação com um token novo.");
     if (resp.status === 403 || resp.status === 404) throw new ErroPublicacao(`O token não tem permissão de escrita no repositório (${resp.status}${msg ? ": " + msg : ""}). Confira se ele dá acesso "Contents: Read and write" a este repositório.`);
-    if (resp.status === 409) throw new ErroPublicacao("O arquivo foi alterado por outra publicação ao mesmo tempo. Tente publicar de novo.");
+    if (resp.status === 409 || (resp.status === 422 && metodo === "PATCH")) throw new ErroPublicacao("Outra publicação foi feita ao mesmo tempo. Nada foi alterado; tente de novo.");
     throw new ErroPublicacao(`O GitHub recusou a operação (${resp.status}${msg ? ": " + msg : ""}).`);
   }
   return resp.json();
@@ -98,10 +98,130 @@ export async function trocarSenha(config, senhaAtual, senhaNova) {
   return salvarConfiguracao({ token, repo: config.repo, senha: senhaNova });
 }
 
-export async function publicarHorarios(config, senha, dados) {
+// ---------------------------------------------------------------- períodos letivos
+// Cada período fica em dados/periodos/<id>.json e o índice em
+// dados/periodos.json. Toda mudança (importar, substituir, remover,
+// renomear, tornar padrão) vira UM commit só, pela API "Git Data" do
+// GitHub: ou tudo é gravado, ou nada muda.
+export const MAX_PERIODOS = 3;
+export const ARQUIVO_INDICE = "dados/periodos.json";
+export const arquivoDoPeriodo = (id) => `dados/periodos/${id}.json`;
+
+export function idDoPeriodo(nome) {
+  return String(nome || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+function decodificarBase64Utf8(b) { return new TextDecoder().decode(deB64(b.replace(/\s/g, ""))); }
+
+// Índice atual lido direto do repositório (não do site, que pode estar
+// em cache), para nunca sobrescrever uma publicação recente.
+async function lerIndiceRemoto(token, repo, ramo) {
+  const r = await github(token, "GET", `/repos/${repo}/contents/${ARQUIVO_INDICE}?ref=${encodeURIComponent(ramo)}`);
+  if (!r || !r.content) return { versao: 2, padrao: null, periodos: [] };
+  try {
+    const indice = JSON.parse(decodificarBase64Utf8(r.content));
+    if (!Array.isArray(indice.periodos)) throw new Error();
+    return indice;
+  } catch {
+    throw new ErroPublicacao("O índice de períodos no repositório está corrompido (dados/periodos.json).");
+  }
+}
+
+async function gravarCommit(token, repo, ramo, mudancas, mensagem) {
+  const ref = await github(token, "GET", `/repos/${repo}/git/ref/heads/${encodeURIComponent(ramo)}`);
+  if (!ref) throw new ErroPublicacao(`O ramo "${ramo}" não existe no repositório.`);
+  const commitAtual = await github(token, "GET", `/repos/${repo}/git/commits/${ref.object.sha}`);
+  const arvore = await github(token, "POST", `/repos/${repo}/git/trees`, {
+    base_tree: commitAtual.tree.sha,
+    tree: mudancas.map((m) => (m.conteudo === null
+      ? { path: m.caminho, mode: "100644", type: "blob", sha: null }
+      : { path: m.caminho, mode: "100644", type: "blob", content: m.conteudo })),
+  });
+  const novo = await github(token, "POST", `/repos/${repo}/git/commits`, { message: mensagem, tree: arvore.sha, parents: [ref.object.sha] });
+  await github(token, "PATCH", `/repos/${repo}/git/refs/heads/${encodeURIComponent(ramo)}`, { sha: novo.sha, force: false });
+  return novo.html_url || `https://github.com/${repo}/commit/${novo.sha}`;
+}
+
+function resumoDoPeriodo(id, nome, descricao, dados) {
+  return {
+    id, nome, descricao: descricao || "", arquivo: arquivoDoPeriodo(id),
+    publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length,
+    planilha: dados.arquivo || "", revisao: dados.revisao || null,
+  };
+}
+
+// Aplica uma operação sobre o índice atual e grava tudo num commit.
+//  op = { tipo: "importar", modo: "substituir"|"novo", alvo?, sai?, nome, descricao, padrao, dados }
+//     | { tipo: "remover", id } | { tipo: "padrao", id } | { tipo: "renomear", id, nome, descricao }
+export async function alterarPeriodos(config, senha, op) {
   const token = await decifrarToken(config, senha);
-  const conteudo = JSON.stringify(dados) + "\n";
-  const resposta = await gravarArquivo(token, config.repo, config.ramo || "main", ARQUIVO_DADOS, conteudo,
-    `Publica horários${dados.arquivo ? " — " + dados.arquivo : ""} (${dados.aulas.length} aulas)`);
-  return resposta && resposta.commit ? resposta.commit.html_url : null;
+  const repo = config.repo, ramo = config.ramo || "main";
+  const indice = await lerIndiceRemoto(token, repo, ramo);
+  const lista = indice.periodos.slice();
+  const acha = (id) => lista.find((p) => p.id === id);
+  const mudancas = [];
+  let mensagem;
+
+  if (op.tipo === "importar") {
+    const nome = String(op.nome || "").trim();
+    const id = idDoPeriodo(nome);
+    if (!id) throw new ErroPublicacao("Informe o nome do período letivo (ex.: 2027/1).");
+    let saiId = null;
+    if (op.modo === "substituir") {
+      if (!acha(op.alvo)) throw new ErroPublicacao("O período escolhido para substituir não existe mais. Recarregue a página.");
+      saiId = op.alvo;
+    } else {
+      if (acha(id)) throw new ErroPublicacao(`Já existe um período "${acha(id).nome}". Para atualizá-lo, escolha "Substituir um período existente".`);
+      if (lista.length >= MAX_PERIODOS) {
+        if (!op.sai || !acha(op.sai)) throw new ErroPublicacao(`Já há ${MAX_PERIODOS} períodos publicados. Escolha qual deles será substituído pelo novo.`);
+        saiId = op.sai;
+      }
+    }
+    if (saiId !== id && acha(id)) throw new ErroPublicacao(`Já existe outro período chamado "${acha(id).nome}". Use outro nome.`);
+    const dados = { ...op.dados, periodo: { id, nome }, publicadoEm: new Date().toISOString() };
+    const entrada = resumoDoPeriodo(id, nome, op.descricao, dados);
+    let pos = lista.length;
+    const nomeSai = saiId ? acha(saiId).nome : "";
+    if (saiId) {
+      pos = lista.findIndex((p) => p.id === saiId);
+      lista.splice(pos, 1);
+      if (saiId !== id) mudancas.push({ caminho: arquivoDoPeriodo(saiId), conteudo: null });
+    }
+    lista.splice(pos, 0, entrada);
+    mudancas.push({ caminho: arquivoDoPeriodo(id), conteudo: JSON.stringify(dados) + "\n" });
+    if (op.padrao || !indice.padrao || indice.padrao === saiId) indice.padrao = id;
+    const origem = dados.arquivo ? ` — ${dados.arquivo}` : "";
+    if (!saiId) mensagem = `Adiciona o período ${nome}${origem} (${dados.aulas.length} aulas)`;
+    else if (saiId === id) mensagem = `Atualiza o período ${nome}${origem} (${dados.aulas.length} aulas)`;
+    else mensagem = `Substitui o período ${nomeSai} por ${nome}${origem} (${dados.aulas.length} aulas)`;
+  } else if (op.tipo === "remover") {
+    const p = acha(op.id);
+    if (!p) throw new ErroPublicacao("Esse período não existe mais. Recarregue a página.");
+    lista.splice(lista.indexOf(p), 1);
+    mudancas.push({ caminho: arquivoDoPeriodo(p.id), conteudo: null });
+    if (indice.padrao === p.id) indice.padrao = lista[0] ? lista[0].id : null;
+    mensagem = `Remove o período ${p.nome}`;
+  } else if (op.tipo === "padrao") {
+    const p = acha(op.id);
+    if (!p) throw new ErroPublicacao("Esse período não existe mais. Recarregue a página.");
+    indice.padrao = p.id;
+    mensagem = `Define ${p.nome} como período padrão`;
+  } else if (op.tipo === "renomear") {
+    const p = acha(op.id);
+    if (!p) throw new ErroPublicacao("Esse período não existe mais. Recarregue a página.");
+    const nome = String(op.nome || "").trim();
+    if (!idDoPeriodo(nome)) throw new ErroPublicacao("Informe o nome do período.");
+    const outro = lista.find((x) => x.id !== p.id && idDoPeriodo(x.nome) === idDoPeriodo(nome));
+    if (outro) throw new ErroPublicacao(`Já existe um período chamado "${outro.nome}".`);
+    mensagem = `Renomeia o período ${p.nome} para ${nome}`;
+    p.nome = nome;
+    p.descricao = String(op.descricao || "").trim();
+    // o id (e o arquivo) continuam os mesmos: links antigos seguem valendo
+  } else throw new ErroPublicacao("Operação desconhecida.");
+
+  const novoIndice = { versao: 2, padrao: indice.padrao, atualizadoEm: new Date().toISOString(), periodos: lista.map((p) => ({ ...p })) };
+  mudancas.push({ caminho: ARQUIVO_INDICE, conteudo: JSON.stringify(novoIndice, null, 1) + "\n" });
+  const link = await gravarCommit(token, repo, ramo, mudancas, mensagem);
+  return { indice: novoIndice, link, dados: op.tipo === "importar" ? JSON.parse(mudancas.find((m) => m.caminho.startsWith("dados/periodos/") && m.conteudo)?.conteudo || "null") : null };
 }

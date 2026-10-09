@@ -1,10 +1,14 @@
 // Interface: consulta pública dos horários + área do administrador
-// (envio da planilha, revisão, prévia e publicação com senha).
+// (envio da planilha, revisão, destino da importação, prévia e
+// publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
 import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js";
-import { interpretar, normalizar, comparar, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO } from "./interpretar.js";
-import { publicarHorarios, salvarConfiguracao, trocarSenha, ErroPublicacao, ARQUIVO_CONFIG, ARQUIVO_DADOS, TAMANHO_MINIMO_SENHA } from "./publicar.js";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO } from "./interpretar.js";
+import {
+  alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
+  ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
+} from "./publicar.js";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -22,43 +26,65 @@ function el(tag, attrs, ...filhos) {
 const icone = (nome, classe) => window.icones.criar(nome, classe) || document.createTextNode("");
 const desenharIcones = (raiz) => window.icones.desenhar(raiz);
 const minutos = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
-const guardar = { ler(k) { try { return localStorage.getItem(k); } catch { return null; } }, gravar(k, v) { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } } };
+const dataBr = (iso) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleDateString("pt-BR") : ""; };
+const guardar = {
+  ler(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  gravar(k, v) { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } },
+  apagar(k) { try { localStorage.removeItem(k); } catch { /* sem armazenamento */ } },
+};
+const FILTROS_VAZIOS = () => ({ q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "", agora: "" });
 
 // ---------------------------------------------------------------- estado
 const estado = {
-  publicado: null,      // dados/horarios.json
-  config: null,         // dados/publicacao.json
-  importacao: null,     // resultado de interpretar() da planilha enviada
+  indice: null,          // dados/periodos.json  { padrao, periodos: [...] }
+  dadosPorPeriodo: new Map(), // id -> dados (carregados sob demanda)
+  periodoId: "",         // período em consulta
+  config: null,          // dados/publicacao.json
+  importacao: null,      // resultado de interpretar() da planilha enviada
   previa: false,
-  filtros: { q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "" },
+  filtros: FILTROS_VAZIOS(),
   agrupar: "turma",
   exibir: "grade",
   ordenar: "horario",
 };
-const dadosAtivos = () => (estado.previa && estado.importacao ? dadosDaImportacao() : estado.publicado);
+const periodos = () => (estado.indice ? estado.indice.periodos : []);
+const periodoPorId = (id) => periodos().find((p) => p.id === id);
+const dadosAtivos = () => (estado.previa && estado.importacao ? dadosDaImportacao() : estado.dadosPorPeriodo.get(estado.periodoId) || null);
 
 // ---------------------------------------------------------------- endereço (#)
-const CHAVES_URL = { q: "q", curso: "curso", turma: "turma", professor: "prof", sala: "sala", turno: "turno", dia: "dia" };
+const CHAVES_URL = { q: "q", curso: "curso", turma: "turma", professor: "prof", sala: "sala", turno: "turno", dia: "dia", agora: "agora" };
 function lerEndereco() {
   const h = location.hash.replace(/^#\/?/, "");
   if (h === "admin" || h.startsWith("admin")) return { admin: true };
   const p = new URLSearchParams(h);
   for (const [campo, chave] of Object.entries(CHAVES_URL)) estado.filtros[campo] = p.get(chave) || "";
-  if (["turma", "professor", "sala", "dia"].includes(p.get("agrupar"))) estado.agrupar = p.get("agrupar");
-  if (["grade", "lista"].includes(p.get("ver"))) estado.exibir = p.get("ver");
-  if (p.get("ordem")) estado.ordenar = p.get("ordem");
+  estado.agrupar = ["turma", "professor", "sala", "dia"].includes(p.get("agrupar")) ? p.get("agrupar") : "turma";
+  estado.exibir = ["grade", "lista"].includes(p.get("ver")) ? p.get("ver") : "grade";
+  estado.ordenar = p.get("ordem") || "horario";
+  const pid = p.get("periodo");
+  estado.periodoId = pid && periodoPorId(pid) ? pid : periodoPadrao();
   return { admin: false };
 }
-function gravarEndereco() {
-  if (estado.previa) return;
+function enderecoDaConsulta({ comPeriodo = true } = {}) {
   const p = new URLSearchParams();
+  if (comPeriodo && estado.periodoId && estado.periodoId !== periodoPadrao()) p.set("periodo", estado.periodoId);
   for (const [campo, chave] of Object.entries(CHAVES_URL)) if (estado.filtros[campo]) p.set(chave, estado.filtros[campo]);
   if (estado.agrupar !== "turma") p.set("agrupar", estado.agrupar);
   if (estado.exibir !== "grade") p.set("ver", estado.exibir);
   if (estado.ordenar !== "horario") p.set("ordem", estado.ordenar);
-  const s = p.toString();
+  return p.toString();
+}
+function gravarEndereco() {
+  if (estado.previa) return;
+  const s = enderecoDaConsulta();
   history.replaceState(null, "", s ? "#" + s : location.pathname + location.search);
+}
+function periodoPadrao() {
+  const ps = periodos();
+  if (!ps.length) return "";
+  return ps.some((p) => p.id === estado.indice.padrao) ? estado.indice.padrao : ps[0].id;
 }
 
 // ---------------------------------------------------------------- carregar
@@ -71,35 +97,60 @@ async function carregarJson(caminho) {
 }
 function dadosValidos(d) { return d && Array.isArray(d.aulas) && Array.isArray(d.turmas); }
 
+async function carregarIndice() {
+  const indice = await carregarJson(ARQUIVO_INDICE);
+  if (indice && Array.isArray(indice.periodos)) { estado.indice = indice; return; }
+  // formato antigo: um único arquivo dados/horarios.json
+  const legado = await carregarJson(ARQUIVO_DADOS);
+  if (dadosValidos(legado)) {
+    estado.indice = { versao: 1, padrao: "atual", periodos: [{ id: "atual", nome: legado.titulo || "Atual", arquivo: ARQUIVO_DADOS, publicadoEm: legado.publicadoEm, aulas: legado.aulas.length, turmas: legado.turmas.length, legado: true }] };
+    estado.dadosPorPeriodo.set("atual", legado);
+  } else estado.indice = { versao: 2, padrao: null, periodos: [] };
+}
+async function garantirPeriodo(id) {
+  if (!id || estado.dadosPorPeriodo.has(id)) return;
+  const p = periodoPorId(id);
+  if (!p) return;
+  const d = await carregarJson(p.arquivo);
+  estado.dadosPorPeriodo.set(id, dadosValidos(d) ? d : null);
+}
+
 async function iniciar() {
   $("ano-rodape").textContent = new Date().getFullYear();
   desenharIcones();
   ligarConsulta();
   ligarAdmin();
-  const [dados, config] = await Promise.all([carregarJson(ARQUIVO_DADOS), carregarJson(ARQUIVO_CONFIG)]);
-  estado.publicado = dadosValidos(dados) ? dados : null;
+  const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
   estado.config = config && config.token && config.sal ? config : null;
-  atualizarStatus();
   atualizarConfigUI();
-  aoMudarEndereco();
+  await aoMudarEndereco();
   window.addEventListener("hashchange", aoMudarEndereco);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("view-consulta").hidden) renderConsulta(); });
+  window.addEventListener("afterprint", () => document.body.classList.remove("imprimindo-um", "imprimindo-todos"));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("view-consulta").hidden) renderResultados(); });
+  // "Agora" e "começa em X min" acompanham o relógio
+  setInterval(() => {
+    if (document.hidden || $("view-consulta").hidden || estado.previa) return;
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#resultados")) return;
+    renderResultados();
+  }, 60000);
 }
 
-function aoMudarEndereco() {
+async function aoMudarEndereco() {
   const { admin } = lerEndereco();
   if (admin) { estado.previa = false; mostrarAdmin(); return; }
+  if (!estado.previa) await garantirPeriodo(estado.periodoId);
   mostrarConsulta();
 }
 
 function atualizarStatus() {
   const pill = $("status-publicacao"), txt = $("status-publicacao-texto");
-  if (estado.previa) { pill.className = "status-pill ambar"; txt.textContent = "Prévia"; return; }
-  const d = estado.publicado;
-  if (!d) { pill.className = "status-pill ambar"; txt.textContent = "Sem horários publicados"; return; }
+  if (estado.previa) { pill.className = "status-pill ambar"; txt.textContent = "Prévia (não publicada)"; return; }
+  const p = periodoPorId(estado.periodoId);
+  const d = dadosAtivos();
+  if (!p || !d) { pill.className = "status-pill ambar"; txt.textContent = periodos().length ? "Carregando…" : "Sem horários publicados"; return; }
   pill.className = "status-pill verde";
-  const quando = d.publicadoEm ? new Date(d.publicadoEm) : null;
-  txt.textContent = quando && !isNaN(quando) ? `Atualizado em ${quando.toLocaleDateString("pt-BR")}` : (d.dataPlanilha ? `Publicado em ${d.dataPlanilha}` : "Publicado");
+  const quando = dataBr(d.publicadoEm || p.publicadoEm);
+  txt.textContent = `${p.nome}${quando ? " · atualizado em " + quando : ""}`;
 }
 
 // ================================================================= CONSULTA
@@ -138,15 +189,33 @@ function ligarConsulta() {
     });
   }
   $("ordenar").addEventListener("change", (e) => { estado.ordenar = e.target.value; gravarEndereco(); renderResultados(); });
-  $("link-inicio").addEventListener("click", (e) => { e.preventDefault(); if (estado.previa) return; limparFiltros(); location.hash = ""; });
+  $("link-inicio").addEventListener("click", (e) => { e.preventDefault(); if (estado.previa) return; estado.periodoId = periodoPadrao(); limparFiltros(); });
   $("btn-previa-voltar").addEventListener("click", () => { location.hash = "admin"; });
+  $("btn-filtros").addEventListener("click", () => {
+    const f = $("painel-filtros");
+    f.classList.toggle("aberto");
+    $("btn-filtros").setAttribute("aria-expanded", String(f.classList.contains("aberto")));
+  });
+  $("btn-imprimir-todos").addEventListener("click", () => imprimir(null));
+  $("btn-meu-horario").addEventListener("click", alternarMeuHorario);
 }
 
 function limparFiltros() {
-  estado.filtros = { q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "" };
+  estado.filtros = FILTROS_VAZIOS();
+  estado.agrupar = "turma";
   $("busca").value = "";
   $("limpar-busca").hidden = true;
   gravarEndereco();
+  renderConsulta();
+}
+
+async function trocarPeriodo(id) {
+  if (id === estado.periodoId) return;
+  estado.periodoId = id;
+  gravarEndereco();
+  $("resultados").replaceChildren(el("p", { class: "contagem", style: "text-align:center;padding:2rem", text: "Carregando o período…" }));
+  await garantirPeriodo(id);
+  atualizarStatus();
   renderConsulta();
 }
 
@@ -158,6 +227,7 @@ function indice(dados) {
     const salas = (a.sala || "").split("/").map((s) => s.trim()).filter(Boolean);
     return {
       ...a, id: i, salas, ini: minutos(a.inicio), fimMin: minutos(a.fim),
+      peso: a.peso || pesoDoCurso(a.curso, dados.pesoPorCurso || {}),
       busca: normalizar([a.disciplina, a.turma, a.curso, (a.professores || []).join(" "), a.sala, NOME_DIA[a.dia], NOME_TURNO[a.turno]].join(" ")),
     };
   });
@@ -191,12 +261,41 @@ function preencherSelect(sel, valores, atual, vazio, rotulo = (v) => v) {
   return sel.value;
 }
 
+function renderSeletorPeriodo() {
+  const box = $("seletor-periodo");
+  if (estado.previa) {
+    box.replaceChildren(el("span", { class: "campo-rotulo", style: "margin:0" }, "Período letivo"),
+      el("span", { class: "selo selo-previa", text: `${dadosAtivos()?.periodo?.nome || "Novo período"} · prévia` }));
+    box.hidden = false;
+    return;
+  }
+  const ps = periodos();
+  box.hidden = ps.length === 0;
+  if (!ps.length) return;
+  const padrao = periodoPadrao();
+  const seg = el("div", { class: "segmentado segmentado-periodo", role: "group", "aria-label": "Período letivo" },
+    ...ps.map((p) => el("button", {
+      type: "button", "aria-pressed": String(p.id === estado.periodoId), title: p.descricao || "",
+      onclick: () => trocarPeriodo(p.id),
+    }, icone("calendar-days"), p.nome, p.id === padrao && ps.length > 1 ? el("span", { class: "tag-atual", text: "atual" }) : null)));
+  box.replaceChildren(el("span", { class: "campo-rotulo", style: "margin:0" }, "Período letivo"), seg);
+}
+
 function renderConsulta() {
+  renderSeletorPeriodo();
   const dados = dadosAtivos();
+  const p = periodoPorId(estado.periodoId);
   const vazioTotal = !dados || !dados.aulas.length;
-  $("view-consulta").querySelector(".hero-panel").hidden = vazioTotal;
+  $("bloco-consulta").hidden = vazioTotal;
+  $("selo-consulta").textContent = estado.previa ? "Horários · prévia" : p ? `Horários ${p.nome}` : "Horários";
+  $("descricao-periodo").textContent = !estado.previa && p && p.descricao ? p.descricao : "";
+  $("descricao-periodo").hidden = !$("descricao-periodo").textContent;
   if (vazioTotal) {
-    $("resultados").replaceChildren(estadoVazio("calendar-days", "Ainda não há horários publicados", "Quando a coordenação publicar a planilha de horários, eles aparecerão aqui.", null));
+    $("titulo-consulta").textContent = "Consulte os horários";
+    $("descricao-consulta").textContent = "";
+    $("resultados").replaceChildren(periodos().length && !estado.previa
+      ? estadoVazio("calendar-days", "Não foi possível carregar este período", "Verifique a conexão e recarregue a página.", null)
+      : estadoVazio("calendar-days", "Ainda não há horários publicados", "Quando a coordenação publicar a planilha de horários, eles aparecerão aqui.", null));
     return;
   }
   const idx = indice(dados);
@@ -205,12 +304,14 @@ function renderConsulta() {
   $("busca").value = f.q;
   $("limpar-busca").hidden = !f.q;
 
-  // cursos (chips) — só aparecem se houver mais de um
+  // cursos (chips) — só aparecem se houver mais de um; escolher um curso
+  // volta para o agrupamento por turma
   const cursosEl = $("filtro-cursos");
   if (!idx.cursos.includes(f.curso)) f.curso = "";
+  const escolherCurso = (c) => { f.curso = c; f.turma = ""; estado.agrupar = "turma"; gravarEndereco(); renderConsulta(); };
   cursosEl.replaceChildren(...(idx.cursos.length > 1 ? [
-    chip("Todos os cursos", !f.curso, () => { f.curso = ""; gravarEndereco(); renderConsulta(); }),
-    ...idx.cursos.map((c) => chip(c, f.curso === c, () => { f.curso = f.curso === c ? "" : c; f.turma = ""; gravarEndereco(); renderConsulta(); }, idx.aulas.filter((a) => a.curso === c).length)),
+    chip("Todos os cursos", !f.curso, () => escolherCurso("")),
+    ...idx.cursos.map((c) => chip(c, f.curso === c, () => escolherCurso(f.curso === c ? "" : c), idx.aulas.filter((a) => a.curso === c).length)),
   ] : []));
   cursosEl.hidden = idx.cursos.length <= 1;
 
@@ -224,9 +325,18 @@ function renderConsulta() {
   const diasEl = $("filtro-dias");
   if (!idx.dias.includes(f.dia)) f.dia = "";
   const hoje = diaDeHoje();
+  const podeAgora = !estado.previa && estado.periodoId === periodoPadrao() && !!hoje;
+  if (!podeAgora) f.agora = "";
+  const chipAgora = podeAgora ? chip("Agora", !!f.agora, () => {
+    f.agora = f.agora ? "" : "1";
+    if (f.agora) { f.dia = ""; estado.exibir = "lista"; } else estado.exibir = "grade";
+    gravarEndereco(); renderConsulta();
+  }) : null;
+  if (chipAgora) { chipAgora.classList.add("chip-agora"); chipAgora.prepend(el("span", { class: "ponto-vivo", "aria-hidden": "true" })); chipAgora.title = "Aulas acontecendo neste momento"; }
   diasEl.replaceChildren(
-    chip("Todos os dias", !f.dia, () => { f.dia = ""; gravarEndereco(); renderConsulta(); }),
-    ...idx.dias.map((d) => chip(NOME_DIA[d] + (d === hoje ? " (hoje)" : ""), f.dia === d, () => { f.dia = f.dia === d ? "" : d; gravarEndereco(); renderConsulta(); })),
+    ...(chipAgora ? [chipAgora] : []),
+    chip("Todos os dias", !f.dia && !f.agora, () => { f.dia = ""; f.agora = ""; gravarEndereco(); renderConsulta(); }),
+    ...idx.dias.map((d) => chip(NOME_DIA[d] + (d === hoje ? " (hoje)" : ""), f.dia === d, () => { f.dia = f.dia === d ? "" : d; f.agora = ""; gravarEndereco(); renderConsulta(); })),
   );
 
   // título conforme a escolha
@@ -234,7 +344,8 @@ function renderConsulta() {
   if (f.turma) { titulo = `Turma ${f.turma}`; desc = "Horário semanal da turma."; }
   else if (f.professor) { titulo = f.professor; desc = "Horário semanal do professor."; }
   else if (f.sala) { titulo = `Sala ${f.sala}`; desc = "Ocupação semanal da sala."; }
-  else if (f.curso) { titulo = `Curso ${f.curso}`; }
+  else if (f.curso) { titulo = `Curso ${f.curso}`; desc = "Turmas do curso. Escolha uma turma para ver só o horário dela."; }
+  if (f.agora) { titulo = f.turma || f.professor || f.sala || f.curso ? `${titulo} — agora` : "Acontecendo agora"; desc = `Aulas em andamento às ${hhmm(new Date().getHours() * 60 + new Date().getMinutes())}. A lista se atualiza sozinha.`; }
   $("titulo-consulta").textContent = titulo;
   $("descricao-consulta").textContent = desc;
 
@@ -247,6 +358,11 @@ function renderConsulta() {
   }
   $("campo-ordenar").hidden = estado.exibir !== "lista";
   $("ordenar").value = estado.ordenar;
+
+  // celular: botão "Filtros" mostra quantos estão ativos
+  const nAtivos = ["curso", "turma", "professor", "sala", "turno", "dia", "agora"].filter((k) => f[k]).length;
+  $("btn-filtros-n").textContent = nAtivos ? String(nAtivos) : "";
+  $("btn-filtros-n").hidden = !nAtivos;
   renderResultados();
 }
 
@@ -264,6 +380,7 @@ function filtrar(idx) {
     (!f.sala || a.salas.includes(f.sala)) &&
     (!f.turno || a.turno === f.turno) &&
     (!f.dia || a.dia === f.dia) &&
+    (!f.agora || situacaoAgora(a)?.agora) &&
     termos.every((t) => a.busca.includes(t)));
 }
 
@@ -281,12 +398,15 @@ function agrupar(aulas, idx) {
       for (const s of ss) if (!f.sala || s === f.sala) add(s, a);
     } else add(a.dia, a);
   }
-  let chaves = [...grupos.keys()];
+  const chaves = [...grupos.keys()];
   if (estado.agrupar === "turma") chaves.sort((a, b) => (idx.ordemTurmas.get(a) ?? 999) - (idx.ordemTurmas.get(b) ?? 999) || comparar(a, b));
   else if (estado.agrupar === "dia") chaves.sort((a, b) => DIAS.indexOf(a) - DIAS.indexOf(b));
   else chaves.sort(comparar);
   return chaves.map((k) => ({ chave: k, aulas: grupos.get(k) }));
 }
+
+// períodos que CONTAM (PCP em dobro), sem mudar a duração real
+const periodosContados = (aulas) => aulas.reduce((s, a) => s + (a.periodos || 1) * (a.peso || 1), 0);
 
 function renderResultados() {
   const dados = dadosAtivos();
@@ -296,19 +416,34 @@ function renderResultados() {
   const f = estado.filtros;
   const ativos = Object.values(f).some(Boolean);
   $("btn-limpar-filtros").hidden = !ativos;
+  renderMeuHorario(ativos);
   const nT = new Set(aulas.map((a) => a.turma)).size, nP = new Set(aulas.flatMap((a) => a.professores || [])).size;
-  const cont = $("contagem");
-  cont.replaceChildren(el("strong", { text: String(aulas.length) }), aulas.length === 1 ? " aula encontrada" : " aulas encontradas",
+  $("contagem").replaceChildren(el("strong", { text: String(aulas.length) }), aulas.length === 1 ? " aula encontrada" : " aulas encontradas",
     aulas.length ? ` · ${plural(nT, "turma", "turmas")} · ${plural(nP, "professor", "professores")}` : "",
     ativos ? ` (de ${idx.aulas.length})` : "");
 
   const res = $("resultados");
+  if (!aulas.length && f.agora) {
+    $("btn-imprimir-todos").hidden = true;
+    const m = new Date().getHours() * 60 + new Date().getMinutes();
+    const semAgora = { ...f, agora: "" };
+    const proximas = idx.aulas.filter((a) => a.dia === diaDeHoje() && a.ini > m).filter((a) => {
+      const g = estado.filtros; estado.filtros = semAgora; const ok = filtrar({ aulas: [a] }).length > 0; estado.filtros = g; return ok;
+    }).sort((a, b) => a.ini - b.ini);
+    const texto = proximas.length ? `A próxima aula de hoje começa às ${proximas[0].inicio} (${proximas[0].disciplina}, ${proximas[0].turma}).` : "Não há mais aulas hoje com os filtros escolhidos.";
+    res.replaceChildren(estadoVazio("clock", "Nenhuma aula acontecendo agora", texto,
+      el("button", { type: "button", class: "botao botao-secundario", onclick: () => { f.agora = ""; f.dia = diaDeHoje(); estado.exibir = "lista"; gravarEndereco(); renderConsulta(); } }, icone("calendar-days"), "Ver as aulas de hoje")));
+    return;
+  }
   if (!aulas.length) {
+    $("btn-imprimir-todos").hidden = true;
     res.replaceChildren(estadoVazio("search-x", "Nenhuma aula encontrada", "Nenhum horário corresponde à busca e aos filtros escolhidos. Tente outro termo ou limpe os filtros.", el("button", { type: "button", class: "botao botao-secundario", onclick: limparFiltros }, icone("undo-2"), "Limpar filtros")));
     return;
   }
   const grupos = agrupar(aulas, idx);
   const LIMITE = 60;
+  $("btn-imprimir-todos").hidden = false;
+  $("btn-imprimir-todos-texto").textContent = grupos.length > 1 ? `Imprimir os ${Math.min(grupos.length, LIMITE)} quadros (um por página)` : "Imprimir";
   const frag = grupos.slice(0, LIMITE).map((g) => renderGrupo(g, idx, dados));
   if (grupos.length > LIMITE) frag.push(el("p", { class: "notice notice-info", text: `Mostrando ${LIMITE} de ${grupos.length} grupos. Use a busca ou os filtros para encontrar os demais.` }));
   res.replaceChildren(...frag);
@@ -317,6 +452,19 @@ function renderResultados() {
 function estadoVazio(nomeIcone, titulo, texto, acao) {
   return el("section", { class: "glass-surface estado-vazio reveal" },
     el("div", { class: "icone-grande" }, icone(nomeIcone)), el("h3", { text: titulo }), el("p", { text: texto }), acao);
+}
+
+// ---- impressão: um quadro por página; o botão de um quadro imprime só ele
+function imprimir(grupoEl) {
+  document.querySelectorAll(".grupo.imprimir-este").forEach((g) => g.classList.remove("imprimir-este"));
+  document.body.classList.remove("imprimindo-um", "imprimindo-todos");
+  if (grupoEl) { grupoEl.classList.add("imprimir-este"); document.body.classList.add("imprimindo-um"); }
+  else document.body.classList.add("imprimindo-todos");
+  const p = periodoPorId(estado.periodoId);
+  const d = dadosAtivos();
+  const cab = [d && d.titulo, estado.previa ? "Prévia" : p ? "Período " + p.nome : "", `impresso em ${new Date().toLocaleDateString("pt-BR")}`].filter(Boolean).join(" · ");
+  document.querySelectorAll(".grupo .so-impressao").forEach((e) => { e.textContent = cab; });
+  window.print();
 }
 
 const TIPO_GRUPO = { turma: "Turma", professor: "Professor", sala: "Sala", dia: "Dia" };
@@ -335,28 +483,39 @@ function renderGrupo(g, idx, dados) {
     meta = partes.join(" · ");
   } else if (tipo === "dia") nome = NOME_DIA[g.chave] || g.chave;
   else if (tipo === "sala" && /^\d/.test(g.chave)) nome = `Sala ${g.chave}`;
-  const periodos = g.aulas.reduce((s, a) => s + (a.periodos || 1), 0);
-  meta = [meta, `${plural(g.aulas.length, "aula", "aulas")} · ${plural(periodos, "período", "períodos")}`].filter(Boolean).join(" · ");
+  const reais = g.aulas.reduce((s, a) => s + (a.periodos || 1), 0), contados = periodosContados(g.aulas);
+  const txtPeriodos = contados !== reais
+    ? `${plural(contados, "período", "períodos")} (PCP conta em dobro)`
+    : plural(reais, "período", "períodos");
+  meta = [meta, `${plural(g.aulas.length, "aula", "aulas")} · ${txtPeriodos}`].filter(Boolean).join(" · ");
 
+  const secao = el("section", { class: "glass-surface grupo reveal" });
   const acoes = el("div", { class: "grupo-acoes" });
-  if (tipo !== "dia" && estado.filtros[tipo] !== g.chave && g.chave !== "Sem professor" && g.chave !== "Sem sala" && g.chave !== "EaD") {
+  if (tipo !== "dia" && estado.filtros[tipo] !== g.chave && !["Sem professor", "Sem sala", "EaD"].includes(g.chave)) {
     acoes.append(el("button", { type: "button", class: "botao-link", onclick: () => { estado.filtros[tipo] = g.chave; gravarEndereco(); renderConsulta(); window.scrollTo({ top: 0, behavior: "smooth" }); } }, icone("search"), "Só esta"));
   }
-  acoes.append(el("button", { type: "button", class: "botao-link", onclick: () => window.print() }, icone("printer"), "Imprimir"));
+  acoes.append(el("button", { type: "button", class: "botao-link", onclick: () => imprimir(secao) }, icone("printer"), "Imprimir"));
 
   const corpo = estado.exibir === "grade" && tipo !== "dia" ? renderSemana(g.aulas, idx) : renderLista(g.aulas);
-  return el("section", { class: "glass-surface grupo reveal" },
+  secao.append(
     el("div", { class: "grupo-topo" },
-      el("div", null, el("div", { class: "grupo-tipo", text: TIPO_GRUPO[tipo] }), el("h3", { class: "grupo-nome", text: nome }), el("div", { class: "grupo-meta", text: meta })),
+      el("div", null, el("div", { class: "grupo-tipo", text: TIPO_GRUPO[tipo] }), el("h3", { class: "grupo-nome", text: nome }), el("div", { class: "grupo-meta", text: meta }),
+        el("div", { class: "so-impressao" })),
       acoes),
     corpo);
+  return secao;
 }
 
 function diaDeHoje() { return [null, "seg", "ter", "qua", "qui", "sex", "sab"][new Date().getDay()]; }
-function eAgora(a) {
-  if (a.dia !== diaDeHoje()) return false;
+// "agora" (em andamento) ou minutos até começar (até 30 min antes), só
+// no período atual e no dia de hoje
+function situacaoAgora(a) {
+  if (estado.previa || estado.periodoId !== periodoPadrao()) return null;
+  if (a.dia !== diaDeHoje()) return null;
   const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
-  return m >= a.ini && m < a.fimMin;
+  if (m >= a.ini && m < a.fimMin) return { agora: true, resta: a.fimMin - m };
+  if (a.ini > m && a.ini - m <= 30) return { agora: false, falta: a.ini - m };
+  return null;
 }
 
 function cartaoAula(a, { comDia = false } = {}) {
@@ -366,13 +525,17 @@ function cartaoAula(a, { comDia = false } = {}) {
   if (tipo !== "professor" || (a.professores || []).length > 1) meta.append(el("span", { title: "Professor" }, icone("user"), (a.professores || []).join(", ") || "Sem professor"));
   if (a.dia === "ead") meta.append(el("span", { title: "A distância" }, icone("monitor"), "EaD"));
   else if (tipo !== "sala" || a.salas.length > 1) meta.append(el("span", { title: "Sala" }, icone("map-pin"), a.sala ? `Sala ${a.sala}` : "Sem sala"));
-  const agora = eAgora(a);
+  const sit = situacaoAgora(a);
+  const agora = sit && sit.agora;
+  const n = a.periodos || 1;
+  const txt = a.peso && a.peso !== 1 ? `· ${plural(n, "período", "períodos")} (conta ${n * a.peso})` : `· ${plural(n, "período", "períodos")}`;
   return el("article", { class: `aula dia-${a.dia}${agora ? " agora" : ""}` },
     el("div", { class: "aula-hora" },
       comDia ? el("span", { class: `pilula-dia dia-${a.dia}`, text: NOME_DIA[a.dia] }) : null,
       icone("clock"), `${a.inicio}–${a.fim}`,
-      el("span", { class: "qtd-periodos", text: `· ${plural(a.periodos || 1, "período", "períodos")}` }),
-      agora ? el("span", { class: "pilula-agora", text: "Agora" }) : null),
+      el("span", { class: "qtd-periodos", text: txt }),
+      agora ? el("span", { class: "pilula-agora", title: `Termina em ${sit.resta} min`, text: "Agora" }) : null,
+      sit && !sit.agora ? el("span", { class: "pilula-em-breve", text: `começa em ${sit.falta} min` }) : null),
     el("div", { class: "aula-disc", text: a.disciplina }),
     meta);
 }
@@ -406,16 +569,16 @@ function renderLista(aulas) {
 function renderSemana(aulas, idx) {
   const presenciais = aulas.filter((a) => a.dia !== "ead");
   const ead = aulas.filter((a) => a.dia === "ead").sort((a, b) => a.ini - b.ini);
-  const hoje = diaDeHoje();
+  const hoje = estado.periodoId === periodoPadrao() && !estado.previa ? diaDeHoje() : null;
   const partes = [];
 
   if (presenciais.length) {
-    // ---- computador: quadro semanal
+    // ---- computador (e impressão): quadro semanal
     const diasCol = ["seg", "ter", "qua", "qui", "sex"].concat(idx.dias.includes("sab") ? ["sab"] : []);
     const slots = idx.slots;
     const slotDe = (min) => { let k = slots.findIndex((s) => s.ini === min); if (k < 0) k = slots.findIndex((s) => min > s.ini && min < s.fim); return k; };
-    // células: aulas que começam no mesmo período ficam juntas; se uma aula
-    // começa antes de outra terminar, as duas também ficam juntas
+    // aulas que começam no mesmo período ficam juntas; se uma começa antes
+    // de outra terminar, as duas também ficam juntas
     const porDia = new Map();
     let usaFallback = false;
     for (const a of presenciais) {
@@ -445,7 +608,7 @@ function renderSemana(aulas, idx) {
         itensLinhas.push({ k, linha });
         linha++;
       }
-      const grade = el("div", { class: "semana", style: `grid-template-columns: 4.4rem repeat(${diasCol.length}, minmax(0, 1fr)); grid-auto-rows: minmax(2.9rem, auto);` });
+      const grade = el("div", { class: "semana", style: `grid-template-columns: 4.4rem repeat(${diasCol.length}, minmax(0, 1fr));` });
       grade.append(el("div", { style: "grid-row:1;grid-column:1" }));
       diasCol.forEach((d, i) => grade.append(el("div", { class: `cab-dia dia-${d}${d === hoje ? " hoje" : ""}`, style: `grid-row:1;grid-column:${i + 2}` }, NOME_DIA[d], d === hoje ? el("span", { class: "pilula-hoje", style: "margin-left:.35rem", text: "hoje" }) : null)));
       const ocupado = new Set();
@@ -455,7 +618,7 @@ function renderSemana(aulas, idx) {
         for (let k = c.k; k <= c.fimK; k++) ocupado.add(`${c.dia}|${k}`);
         const juntas = juntarParalelas(c.aulas);
         grade.append(el("div", { class: "celula", style: `grid-column:${col};grid-row:${ini} / ${fim}` },
-          ...(juntas.length === 1 ? [blocoParalelo(juntas[0])] : [blocoParalelo(c.aulas.sort((x, y) => x.ini - y.ini))])));
+          juntas.length === 1 ? blocoParalelo(juntas[0]) : blocoParalelo(c.aulas.sort((x, y) => x.ini - y.ini))));
       }
       for (const it of itensLinhas) {
         if (it.intervalo) { grade.append(el("div", { class: "intervalo", style: `grid-row:${it.linha}` })); continue; }
@@ -483,14 +646,56 @@ function renderSemana(aulas, idx) {
   }
   return el("div", null, ...partes);
 }
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+// ---- "Meu horário": guarda a consulta atual neste aparelho
+const CHAVE_MEU = "horarios-meu";
+function descricaoFiltros(f) {
+  const partes = [];
+  if (f.turma) partes.push(`Turma ${f.turma}`);
+  if (f.professor) partes.push(f.professor);
+  if (f.sala) partes.push(`Sala ${f.sala}`);
+  if (f.curso && !f.turma) partes.push(`Curso ${f.curso}`);
+  if (f.turno) partes.push(NOME_TURNO[f.turno]);
+  if (f.dia) partes.push(NOME_DIA[f.dia]);
+  if (f.q) partes.push(`"${f.q}"`);
+  if (f.agora) partes.push("Agora");
+  return partes.join(" · ");
+}
+function lerMeu() { try { return JSON.parse(guardar.ler(CHAVE_MEU) || "null"); } catch { return null; } }
+function renderMeuHorario(ativos) {
+  const meu = lerMeu();
+  const atual = enderecoDaConsulta({ comPeriodo: false });
+  const salvoAqui = meu && meu.endereco === atual;
+  const btn = $("btn-meu-horario");
+  btn.hidden = estado.previa || (!ativos && !salvoAqui);
+  btn.setAttribute("aria-pressed", String(!!salvoAqui));
+  $("btn-meu-horario-texto").textContent = salvoAqui ? "Este é o meu horário" : "Salvar como meu horário";
+  const atalho = $("atalho-meu");
+  if (meu && !ativos && !estado.previa) {
+    atalho.replaceChildren(icone("star"), el("span", null, "Meu horário: ", el("strong", { text: meu.descricao })),
+      el("button", { type: "button", class: "botao-link", onclick: () => { location.hash = meu.endereco; } }, "Abrir"),
+      el("button", { type: "button", class: "botao-link", onclick: () => { guardar.apagar(CHAVE_MEU); renderResultados(); } }, "Esquecer"));
+    atalho.hidden = false;
+  } else atalho.hidden = true;
+}
+function alternarMeuHorario() {
+  const meu = lerMeu();
+  const atual = enderecoDaConsulta({ comPeriodo: false });
+  if (meu && meu.endereco === atual) guardar.apagar(CHAVE_MEU);
+  else guardar.gravar(CHAVE_MEU, JSON.stringify({ endereco: atual, descricao: descricaoFiltros(estado.filtros) || "Consulta salva" }));
+  renderResultados();
+}
 
 // ================================================================= ADMIN
 function mostrarAdmin() {
   $("view-consulta").hidden = true;
   $("view-admin").hidden = false;
   $("barra-previa").hidden = true;
+  estado.periodoId = periodoPadrao();
   atualizarStatus();
+  garantirPeriodo(estado.periodoId).then(atualizarStatus);
+  renderPeriodosAdmin();
+  if (estado.importacao) renderDestino();
   window.scrollTo({ top: 0 });
 }
 
@@ -518,44 +723,79 @@ function ligarAdmin() {
   $("btn-previa").addEventListener("click", () => {
     if (!estado.importacao) return;
     estado.previa = true;
-    estado.filtros = { q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "" };
+    estado.filtros = FILTROS_VAZIOS();
+    estado.agrupar = "turma";
     history.pushState(null, "", location.pathname + location.search);
     mostrarConsulta();
     window.scrollTo({ top: 0 });
   });
   $("btn-baixar-json").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(dadosParaPublicar(), null, 1)], { type: "application/json" });
-    const a = el("a", { href: URL.createObjectURL(blob), download: "horarios.json" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: `horarios-${idDoPeriodo(nomeDestino()) || "periodo"}.json` });
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
+  $("form-destino").addEventListener("submit", (e) => e.preventDefault());
+  $("form-destino").addEventListener("change", renderDestino);
+  $("form-destino").addEventListener("input", (e) => { if (e.target.matches("input[type=text]")) renderResumoDestino(); });
+  $("btn-cancelar-importacao").addEventListener("click", cancelarImportacao);
   $("form-publicar").addEventListener("submit", aoPublicar);
   $("form-config").addEventListener("submit", aoConfigurar);
   $("form-senha").addEventListener("submit", aoTrocarSenha);
 }
 
+// "Horários - IFSul - SG - 2026_2.xlsx" → "2026/2"
+function periodoDoArquivo(nome) {
+  const m = /(20\d{2})\s*[_/.\-]\s*([12])(?!\d)/.exec(nome);
+  return m ? `${m[1]}/${m[2]}` : "";
+}
 function tituloDoArquivo(nome) {
   return nome.replace(/\.(xlsx|xls)$/i, "").replace(/(\d{4})[_-](\d)\b/, "$1/$2").replace(/_/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function esconderEtapas() {
+  for (const id of ["sec-leitura", "sec-revisao", "sec-destino", "sec-publicar"]) $(id).hidden = true;
+}
+
+function cancelarImportacao() {
+  estado.importacao = null;
+  estado.previa = false;
+  esconderEtapas();
+  mensagem("msg-publicar");
+  mensagem("msg-envio", "info", "Importação cancelada. Nenhum dado do site foi alterado.");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function processarArquivo(arquivo) {
   mensagem("msg-envio", "info", `Lendo "${arquivo.name}"…`);
-  for (const id of ["sec-leitura", "sec-revisao", "sec-publicar"]) $(id).hidden = true;
+  esconderEtapas();
   mensagem("msg-publicar");
   estado.importacao = null;
   if (!/\.(xlsx|xls)$/i.test(arquivo.name)) { mensagem("msg-envio", "error", "Envie um arquivo do Excel (.xlsx)."); return; }
   if (arquivo.size > LIMITE_ARQUIVO) { mensagem("msg-envio", "error", `O arquivo tem ${(arquivo.size / 1048576).toFixed(1)} MB; o limite é ${Math.round(LIMITE_ARQUIVO / 1048576)} MB.`); return; }
   try {
     const abas = await lerPlanilha(new Uint8Array(await arquivo.arrayBuffer()));
+    await garantirPeriodo(periodoPadrao());
     const titulo = tituloDoArquivo(arquivo.name);
-    const r = interpretar(abas, { arquivo: arquivo.name, titulo });
+    const opcoes = { arquivo: arquivo.name, titulo, decisoesInicio: {} };
+    const r = interpretar(abas, opcoes);
+    Object.assign(r, { abasLidas: abas, opcoes, nomeSugerido: periodoDoArquivo(arquivo.name) });
     estado.importacao = r;
-    $("pub-titulo").value = titulo;
+    // o título mostrado no site é o do período em uso, se houver
+    const atual = estado.dadosPorPeriodo.get(periodoPadrao());
+    $("pub-titulo").value = atual && atual.titulo ? atual.titulo : titulo;
+    prepararDestino(r);
     mensagem("msg-envio", r.dados.aulas.length ? "success" : "error",
-      r.dados.aulas.length ? `"${arquivo.name}" lida: ${plural(r.dados.aulas.length, "aula", "aulas")} encontradas. Revise abaixo.` : `"${arquivo.name}" foi aberta, mas nenhuma aula pôde ser lida. Veja a revisão abaixo.`);
+      r.dados.aulas.length ? `"${arquivo.name}" lida: ${plural(r.dados.aulas.length, "aula", "aulas")} encontradas. Revise abaixo; nada foi publicado ainda.` : `"${arquivo.name}" foi aberta, mas nenhuma aula pôde ser lida. Veja a revisão abaixo.`);
     renderLeitura(r, arquivo.name);
     renderRevisao(r);
-    renderPublicar();
+    renderPendencias();
+    $("sec-leitura").hidden = false;
+    $("sec-revisao").hidden = false;
+    $("sec-destino").hidden = !r.dados.aulas.length;
+    $("sec-publicar").hidden = !r.dados.aulas.length;
+    renderDestino();
+    renderPublicarConfig();
     $("sec-leitura").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     console.error(e);
@@ -585,20 +825,17 @@ function contarNiveis(avisos) { const c = { erro: 0, divergencia: 0, duvida: 0, 
 
 function renderRevisao(r) {
   const c = contarNiveis(r.avisos);
-  const resumo = $("revisao-resumo");
   const linhas = [];
   if (c.erro) linhas.push(el("div", { class: "notice notice-error" }, icone("circle-alert"), el("span", { text: `${plural(c.erro, "linha com erro", "linhas com erro")}: ${c.erro === 1 ? "ela não será publicada" : "elas não serão publicadas"} até ser corrigida na planilha.` })));
   if (c.divergencia) linhas.push(el("div", { class: "notice notice-warn", style: "margin-top:.5rem" }, icone("triangle-alert"), el("span", { text: `${plural(c.divergencia, "divergência encontrada", "divergências encontradas")}: dados que não batem entre si (conflitos de horário, quadro diferente da tabela, carga horária…).` })));
   if (!c.erro && !c.divergencia) linhas.push(el("div", { class: "notice notice-success" }, icone("circle-check"), el("span", { text: `Nenhum erro ou divergência. ${c.duvida ? plural(c.duvida, "ponto merece", "pontos merecem") + " uma conferência (dúvidas)." : "Tudo pronto para publicar."}` })));
-  resumo.replaceChildren(...linhas);
+  $("revisao-resumo").replaceChildren(...linhas);
 
-  const chips = $("revisao-niveis");
-  chips.replaceChildren(...Object.keys(NOMES_NIVEL).filter((n) => c[n]).map((n) =>
+  $("revisao-niveis").replaceChildren(...Object.keys(NOMES_NIVEL).filter((n) => c[n]).map((n) =>
     el("button", { type: "button", class: "filtro-chip nivel-chip focus-ring", "data-nivel": n, "aria-pressed": String(filtroNiveis.has(n)),
       onclick: () => { filtroNiveis.has(n) ? filtroNiveis.delete(n) : filtroNiveis.add(n); renderRevisao(r); } },
     el("span", { class: `marcador ${n}` }), NOMES_NIVEL[n][c[n] === 1 ? 0 : 1], el("span", { class: "n", text: String(c[n]) }))));
 
-  // agrupado por categoria
   const cats = new Map();
   for (const a of r.avisos) {
     if (!filtroNiveis.has(a.nivel)) continue;
@@ -619,32 +856,259 @@ function renderRevisao(r) {
   }));
 }
 
+// ---------------------------------------------------------------- decisões pendentes
+// Início fora da grade: o administrador autoriza (mantém) ou põe na grade.
+function decidir(chave, decisao) {
+  const imp = estado.importacao;
+  if (chave) imp.opcoes.decisoesInicio[chave] = decisao;
+  else imp.opcoes.decisoesInicio = {};
+  const novo = interpretar(imp.abasLidas, imp.opcoes);
+  Object.assign(imp, { dados: novo.dados, avisos: novo.avisos, pendencias: novo.pendencias, abas: novo.abas });
+  renderRevisao(imp);
+  renderPendencias();
+  renderPublicarConfig();
+  renderResumoDestino();
+}
+function renderPendencias() {
+  const imp = estado.importacao;
+  const box = $("revisao-pendencias");
+  const pend = imp ? imp.pendencias : [];
+  const decididas = imp ? Object.entries(imp.opcoes.decisoesInicio) : [];
+  if (!pend.length && !decididas.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.replaceChildren(
+    el("h4", { class: "subtitulo-bloco" }, icone("clock"), pend.length ? `Decida antes de publicar (${pend.length})` : "Decisões tomadas"),
+    el("p", { class: "texto-pequeno", text: "Estas aulas começam num horário que não está na grade da planilha. Mantenha o horário informado (autorizar) ou coloque a aula no horário da grade." }),
+    ...pend.map((p) => el("div", { class: "pendencia" },
+      el("div", null, el("strong", { text: `${p.disciplina} · ${p.turma} · ${NOME_DIA[p.dia]}` }),
+        el("div", { class: "texto-pequeno", text: `Começa às ${p.inicio}; o período da grade é ${p.grade}–${p.gradeFim}.` }),
+        el("span", { class: "local", text: p.local })),
+      el("div", { class: "pendencia-acoes" },
+        el("button", { type: "button", class: "botao botao-secundario", onclick: () => decidir(p.chave, "manter") }, icone("check"), `Manter ${p.inicio}`),
+        el("button", { type: "button", class: "botao botao-suave", onclick: () => decidir(p.chave, "grade") }, icone("clock"), `Colocar às ${p.grade}`)))),
+    decididas.length ? el("div", { class: "texto-pequeno", style: "margin-top:.6rem" },
+      `${plural(decididas.length, "decisão tomada", "decisões tomadas")}. `,
+      el("button", { type: "button", class: "botao-link", style: "display:inline-flex;min-height:0", onclick: () => decidir(null) }, "Refazer as decisões")) : null);
+}
+
+// ---------------------------------------------------------------- destino da importação
+// A: substituir um período existente · B: adicionar novo · C: cancelar
+function prepararDestino(r) {
+  const ps = periodos().filter((p) => !p.legado);
+  const sugestao = r.nomeSugerido;
+  const igual = ps.find((p) => idDoPeriodo(p.nome) === idDoPeriodo(sugestao));
+  const modo = !ps.length ? "novo" : igual ? "substituir" : "novo";
+  for (const radio of document.querySelectorAll("input[name=dest-modo]")) radio.checked = radio.value === modo;
+  preencherSelectPeriodos($("dest-alvo"), ps, igual ? igual.id : periodoPadrao());
+  preencherSelectPeriodos($("dest-sai"), ps, "", "Escolha o período que sai…");
+  $("dest-nome-novo").value = igual ? "" : sugestao;
+  const alvo = periodoPorId($("dest-alvo").value);
+  $("dest-nome-subst").value = alvo ? alvo.nome : "";
+  $("dest-descricao").value = "";
+  $("dest-padrao").checked = !ps.length;
+  $("dest-confirmar").checked = false;
+  $("dest-alvo").dataset.anterior = $("dest-alvo").value;
+}
+function preencherSelectPeriodos(sel, ps, valor, vazio) {
+  sel.replaceChildren(...(vazio ? [el("option", { value: "", text: vazio })] : []),
+    ...ps.map((p) => el("option", { value: p.id, text: `${p.nome} — ${plural(p.aulas || 0, "aula", "aulas")}${p.publicadoEm ? ", publicado em " + dataBr(p.publicadoEm) : ""}${p.id === periodoPadrao() ? " (atual)" : ""}` })));
+  sel.value = ps.some((p) => p.id === valor) ? valor : (vazio ? "" : ps[0]?.id || "");
+}
+const modoDestino = () => document.querySelector("input[name=dest-modo]:checked")?.value || "novo";
+function nomeDestino() {
+  return (modoDestino() === "substituir" ? $("dest-nome-subst").value : $("dest-nome-novo").value).trim();
+}
+function periodoQueSai() {
+  const ps = periodos().filter((p) => !p.legado);
+  if (modoDestino() === "substituir") return periodoPorId($("dest-alvo").value) || null;
+  if (ps.length >= MAX_PERIODOS) return periodoPorId($("dest-sai").value) || null;
+  return null;
+}
+
+function renderDestino() {
+  if (!estado.importacao) return;
+  const ps = periodos().filter((p) => !p.legado);
+  const cheio = ps.length >= MAX_PERIODOS;
+  const opSubst = document.querySelector("input[name=dest-modo][value=substituir]");
+  opSubst.disabled = !ps.length;
+  if (!ps.length && opSubst.checked) document.querySelector("input[name=dest-modo][value=novo]").checked = true;
+  const modo = modoDestino();
+  $("dest-bloco-substituir").hidden = modo !== "substituir";
+  $("dest-bloco-novo").hidden = modo !== "novo";
+  $("dest-cheio").hidden = !(modo === "novo" && cheio);
+  $("dest-cheio-texto").textContent = `Já existem ${MAX_PERIODOS} períodos publicados (${ps.map((p) => p.nome).join(", ")}), o máximo. Para adicionar um novo, escolha qual deles será substituído; os outros continuam como estão.`;
+  $("dest-vagas").textContent = ps.length
+    ? `Períodos publicados: ${ps.length} de ${MAX_PERIODOS} (${ps.map((p) => p.nome).join(", ")}).`
+    : `Nenhum período publicado ainda (máximo de ${MAX_PERIODOS}).`;
+  // ao trocar o período a substituir, o nome acompanha
+  if ($("dest-alvo").dataset.anterior !== $("dest-alvo").value) {
+    const alvo = periodoPorId($("dest-alvo").value);
+    $("dest-nome-subst").value = alvo ? alvo.nome : "";
+    $("dest-alvo").dataset.anterior = $("dest-alvo").value;
+  }
+  for (const card of document.querySelectorAll(".opcao-destino")) card.classList.toggle("selecionada", card.querySelector("input")?.checked);
+  renderResumoDestino();
+  renderComparacao();
+}
+
+function renderResumoDestino() {
+  if (!estado.importacao) return;
+  const nome = nomeDestino();
+  const sai = periodoQueSai();
+  const ps = periodos().filter((p) => !p.legado);
+  const novos = estado.importacao.dados.aulas.length;
+  const outros = ps.filter((p) => !sai || p.id !== sai.id).filter((p) => idDoPeriodo(p.nome) !== idDoPeriodo(nome) || (sai && p.id === sai.id));
+  const box = $("dest-resumo");
+  let problema = "";
+  if (!idDoPeriodo(nome)) problema = "Informe o nome do período letivo (ex.: 2027/1).";
+  else if (modoDestino() === "novo" && ps.some((p) => idDoPeriodo(p.nome) === idDoPeriodo(nome))) problema = `Já existe o período "${nome}". Para atualizá-lo, escolha "Substituir os horários de um período existente".`;
+  else if (sai && ps.some((p) => p.id !== sai.id && idDoPeriodo(p.nome) === idDoPeriodo(nome))) problema = `Já existe outro período chamado "${nome}". Use outro nome.`;
+  else if (modoDestino() === "novo" && ps.length >= MAX_PERIODOS && !sai) problema = "Escolha qual período será substituído pelo novo.";
+  else if (estado.importacao.pendencias && estado.importacao.pendencias.length) problema = `Falta decidir ${plural(estado.importacao.pendencias.length, "aula com início fora da grade", "aulas com início fora da grade")} (etapa 2, Revisão).`;
+  if (problema) {
+    box.className = "notice notice-error";
+    box.replaceChildren(icone("circle-alert"), el("span", { text: problema }));
+  } else if (sai) {
+    box.className = "notice notice-warn";
+    box.replaceChildren(icone("triangle-alert"), el("span", null,
+      el("strong", { text: `Atenção: o período ${sai.nome} será substituído.` }),
+      ` Os ${plural(sai.aulas || 0, "horário", "horários")} publicados em ${dataBr(sai.publicadoEm) || "data desconhecida"} serão trocados pelos ${novos} desta planilha${idDoPeriodo(sai.nome) !== idDoPeriodo(nome) ? `, com o nome "${nome}"` : ""}.`,
+      outros.length ? ` ${outros.length === 1 ? "O período" : "Os períodos"} ${outros.map((p) => p.nome).join(", ")} ${outros.length === 1 ? "continua" : "continuam"} intacto${outros.length === 1 ? "" : "s"}.` : "",
+      " A versão anterior fica no histórico do GitHub."));
+  } else {
+    box.className = "notice notice-info";
+    box.replaceChildren(icone("info"), el("span", null,
+      el("strong", { text: `Será criado o período ${nome}` }), ` com ${novos} horários.`,
+      ps.length ? ` ${ps.length === 1 ? "O período" : "Os períodos"} ${ps.map((p) => p.nome).join(", ")} ${ps.length === 1 ? "continua" : "continuam"} disponíve${ps.length === 1 ? "l" : "is"}.` : ""));
+  }
+  box.hidden = false;
+  $("dest-confirmar-wrap").hidden = !sai || !!problema;
+  $("dest-confirmar-texto").textContent = sai ? `Confirmo que os horários de ${sai.nome} serão substituídos.` : "";
+  $("btn-publicar").disabled = !!problema || !estado.config;
+  $("btn-publicar-texto").textContent = sai ? `Substituir ${sai.nome}` : `Publicar ${nome || "novo período"}`;
+}
+
+// Comparação com o período que será substituído
+async function renderComparacao() {
+  const box = $("dest-comparacao");
+  const sai = periodoQueSai();
+  if (!sai || !estado.importacao) { box.hidden = true; return; }
+  const pedido = sai.id;
+  box.hidden = false;
+  box.replaceChildren(el("p", { class: "texto-pequeno", text: `Comparando com ${sai.nome}…` }));
+  await garantirPeriodo(sai.id);
+  if (periodoQueSai()?.id !== pedido) return;
+  const antigos = estado.dadosPorPeriodo.get(sai.id);
+  if (!antigos) { box.replaceChildren(el("p", { class: "texto-pequeno", text: `Não foi possível carregar ${sai.nome} para comparar.` })); return; }
+  const chave = (a) => [a.turma, a.dia, a.inicio, normalizar(a.disciplina)].join("|");
+  const desc = (a) => `${a.turma} · ${NOME_DIA[a.dia]} ${a.inicio}–${a.fim} · ${a.disciplina}`;
+  const detalhe = (a) => `${(a.professores || []).join(", ") || "sem professor"}${a.sala ? ", sala " + a.sala : ""}`;
+  const mapaA = new Map(antigos.aulas.map((a) => [chave(a), a]));
+  const mapaN = new Map(estado.importacao.dados.aulas.map((a) => [chave(a), a]));
+  const novas = [...mapaN].filter(([k]) => !mapaA.has(k)).map(([, a]) => a);
+  const removidas = [...mapaA].filter(([k]) => !mapaN.has(k)).map(([, a]) => a);
+  const mudadas = [...mapaN].filter(([k, a]) => mapaA.has(k) && (detalhe(a) !== detalhe(mapaA.get(k)) || a.fim !== mapaA.get(k).fim)).map(([k, a]) => [mapaA.get(k), a]);
+  const iguais = mapaN.size - novas.length - mudadas.length;
+  const bloco = (titulo, itens, fmt, classe) => !itens.length ? null : el("details", { class: "categoria" },
+    el("summary", null, el("span", { class: `marcador ${classe}` }), titulo, el("span", { class: "qtd", text: `(${itens.length})` }), icone("chevron-down", "chev")),
+    ...itens.slice(0, 200).map((x) => el("div", { class: "aviso-item" }, fmt(x))),
+    itens.length > 200 ? el("div", { class: "aviso-item texto-pequeno", text: `… e mais ${itens.length - 200}.` }) : null);
+  box.replaceChildren(...[
+    el("h4", { class: "subtitulo-bloco" }, icone("list"), `O que muda em relação a ${sai.nome}`),
+    el("div", { class: "estatisticas estatisticas-4" },
+      el("div", { class: "estatistica" }, el("strong", { text: String(iguais) }), el("span", { text: "sem mudança" })),
+      el("div", { class: "estatistica est-nova" }, el("strong", { text: String(novas.length) }), el("span", { text: "novas" })),
+      el("div", { class: "estatistica est-mudou" }, el("strong", { text: String(mudadas.length) }), el("span", { text: "com professor, sala ou fim diferentes" })),
+      el("div", { class: "estatistica est-saiu" }, el("strong", { text: String(removidas.length) }), el("span", { text: "saem" }))),
+    !novas.length && !removidas.length && !mudadas.length ? el("p", { class: "texto-pequeno", style: "margin-top:.75rem", text: "A nova planilha tem exatamente os mesmos horários." }) : null,
+    bloco("Aulas novas", novas, (a) => [desc(a), el("span", { class: "local", text: detalhe(a) })], "info"),
+    bloco("Aulas alteradas", mudadas, ([a, n]) => [desc(n), el("span", { class: "local", text: `antes: ${detalhe(a)}${a.fim !== n.fim ? " até " + a.fim : ""} → agora: ${detalhe(n)}${a.fim !== n.fim ? " até " + n.fim : ""}` })], "duvida"),
+    bloco("Aulas que saem", removidas, (a) => [desc(a), el("span", { class: "local", text: detalhe(a) })], "divergencia"),
+  ].filter(Boolean));
+}
+
 function dadosDaImportacao() {
   const r = estado.importacao;
-  return { ...r.dados, titulo: $("pub-titulo").value.trim() || r.dados.titulo };
+  return { ...r.dados, titulo: $("pub-titulo").value.trim() || r.dados.titulo, periodo: { id: idDoPeriodo(nomeDestino()), nome: nomeDestino() } };
 }
 function dadosParaPublicar() {
   const c = contarNiveis(estado.importacao.avisos);
   return { ...dadosDaImportacao(), publicadoEm: new Date().toISOString(), revisao: { erros: c.erro, divergencias: c.divergencia, duvidas: c.duvida } };
 }
 
-function renderPublicar() {
-  const r = estado.importacao;
-  $("sec-leitura").hidden = false;
-  $("sec-revisao").hidden = false;
-  $("sec-publicar").hidden = false;
-  const c = contarNiveis(r.avisos);
-  const precisaConfirmar = c.erro + c.divergencia > 0;
-  $("pub-confirmar-wrap").hidden = !precisaConfirmar;
-  $("pub-confirmar").checked = false;
-  $("pub-confirmar-texto").textContent = `Revisei ${c.erro ? plural(c.erro, "erro", "erros") + (c.divergencia ? " e " : "") : ""}${c.divergencia ? plural(c.divergencia, "divergência", "divergências") : ""} e quero publicar assim mesmo.`;
-  const semAulas = !r.dados.aulas.length;
-  $("btn-publicar").disabled = semAulas || !estado.config;
-  $("btn-previa").disabled = semAulas;
-  $("btn-baixar-json").disabled = semAulas;
-  $("pub-sem-config").hidden = !!estado.config;
-  $("form-publicar").hidden = !estado.config;
-  if (!estado.config) $("detalhes-config").open = true;
+// ---------------------------------------------------------------- períodos publicados (gerenciar)
+let acaoPeriodo = null; // { tipo, id }
+function renderPeriodosAdmin() {
+  const lista = $("lista-periodos");
+  const ps = periodos();
+  $("periodos-vagas").textContent = `${ps.filter((p) => !p.legado).length} de ${MAX_PERIODOS} espaços ocupados.`;
+  if (!ps.length) { lista.replaceChildren(el("p", { class: "texto-pequeno", style: "margin-top:1rem", text: "Nenhum período publicado ainda. Envie uma planilha acima." })); return; }
+  const padrao = periodoPadrao();
+  lista.replaceChildren(...ps.map((p) => {
+    const aberto = acaoPeriodo && acaoPeriodo.id === p.id;
+    const card = el("article", { class: `periodo-card${p.id === padrao ? " padrao" : ""}` },
+      el("div", { class: "periodo-topo" },
+        el("div", null,
+          el("div", { class: "periodo-nome" }, icone("calendar-days"), p.nome, p.id === padrao ? el("span", { class: "tag-atual", text: "atual (abre primeiro)" }) : null),
+          p.descricao ? el("div", { class: "texto-pequeno", text: p.descricao }) : null,
+          el("div", { class: "texto-pequeno", text: [`${plural(p.aulas || 0, "aula", "aulas")}`, `${plural(p.turmas || 0, "turma", "turmas")}`, p.publicadoEm ? `publicado em ${dataBr(p.publicadoEm)}` : "", p.planilha ? `planilha "${p.planilha}"` : ""].filter(Boolean).join(" · ") })),
+        el("div", { class: "grupo-acoes" },
+          el("button", { type: "button", class: "botao-link", onclick: () => { estado.previa = false; location.hash = p.id === padrao ? "" : `periodo=${encodeURIComponent(p.id)}`; } }, icone("eye"), "Ver"),
+          p.legado ? null : [
+            p.id !== padrao ? el("button", { type: "button", class: "botao-link", onclick: () => abrirAcao("padrao", p.id) }, icone("check"), "Tornar atual") : null,
+            el("button", { type: "button", class: "botao-link", onclick: () => abrirAcao("renomear", p.id) }, icone("pencil"), "Renomear"),
+            el("button", { type: "button", class: "botao-link botao-perigo", onclick: () => abrirAcao("remover", p.id) }, icone("trash-2"), "Remover"),
+          ])));
+    if (aberto) card.append(formAcao(p));
+    return card;
+  }));
+}
+function abrirAcao(tipo, id) { acaoPeriodo = { tipo, id }; renderPeriodosAdmin(); setTimeout(() => $("acao-senha")?.focus(), 0); }
+function formAcao(p) {
+  const { tipo } = acaoPeriodo;
+  const textos = {
+    padrao: `"${p.nome}" passará a ser o período que abre primeiro no site. Nenhum horário muda.`,
+    renomear: `Mude o nome ou a observação do período "${p.nome}". Os horários não mudam.`,
+    remover: `O período "${p.nome}" (${plural(p.aulas || 0, "aula", "aulas")}) deixará de aparecer no site. Os outros períodos não mudam. A versão removida fica no histórico do GitHub.`,
+  };
+  const form = el("form", { class: `acao-periodo acao-${tipo}`, autocomplete: "off" },
+    el("div", { class: `notice ${tipo === "remover" ? "notice-error" : "notice-info"}` }, icone(tipo === "remover" ? "triangle-alert" : "info"), el("span", { text: textos[tipo] })),
+    tipo === "renomear" ? el("div", { class: "form-grade duas" },
+      el("label", null, el("span", { class: "campo-rotulo", text: "Nome do período" }), el("input", { id: "acao-nome", class: "text-field", type: "text", maxlength: "40", value: p.nome, required: true })),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Observação (opcional)" }), el("input", { id: "acao-descricao", class: "text-field", type: "text", maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" }))) : null,
+    tipo === "remover" ? el("label", { class: "caixa-marcar" }, el("input", { id: "acao-confirmar", type: "checkbox", required: true }), el("span", { text: `Confirmo a remoção de ${p.nome}.` })) : null,
+    el("div", { class: "form-grade duas" },
+      el("label", null, el("span", { class: "campo-rotulo", text: "Senha de publicação" }), el("input", { id: "acao-senha", class: "text-field", type: "password", autocomplete: "current-password", required: true }))),
+    el("div", { class: "linha-acoes" },
+      el("button", { type: "submit", class: `botao ${tipo === "remover" ? "botao-perigo-cheio" : "botao-primario"}` }, el("span", { text: { padrao: "Tornar atual", renomear: "Salvar", remover: `Remover ${p.nome}` }[tipo] })),
+      el("button", { type: "button", class: "botao botao-secundario", onclick: () => { acaoPeriodo = null; renderPeriodosAdmin(); } }, "Cancelar")),
+    el("div", { id: "msg-acao", class: "notice", style: "margin-top:1rem", hidden: true, role: "status" }));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!estado.config) { mensagem("msg-acao", "error", "Configure a publicação primeiro (abaixo)."); return; }
+    const espera = bloqueio();
+    if (espera) { mensagem("msg-acao", "error", `Muitas tentativas com senha errada. Aguarde ${espera} s.`); return; }
+    const botao = form.querySelector("button[type=submit]");
+    ocupado(botao, true, "Gravando…");
+    try {
+      const op = { tipo, id: p.id };
+      if (tipo === "renomear") { op.nome = $("acao-nome").value; op.descricao = $("acao-descricao").value; }
+      const r = await alterarPeriodos(estado.config, $("acao-senha").value, op);
+      guardar.gravar("horarios-erros", "0");
+      estado.indice = r.indice;
+      if (tipo === "remover") estado.dadosPorPeriodo.delete(p.id);
+      acaoPeriodo = null;
+      renderPeriodosAdmin();
+      if (estado.importacao) { prepararDestino(estado.importacao); renderDestino(); }
+      mensagem("msg-periodos", "success", "Feito. O site público é atualizado em cerca de 1 minuto. ", r.link ? el("a", { href: r.link, target: "_blank", rel: "noopener", text: "Ver o registro no GitHub" }) : null);
+    } catch (err) {
+      if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+      mensagem("msg-acao", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível gravar. Tente de novo.");
+      if (!(err instanceof ErroPublicacao)) console.error(err);
+      ocupado(botao, false);
+    }
+  });
+  return form;
 }
 
 // ---- tentativas de senha (só neste aparelho; a proteção real é a senha forte)
@@ -670,28 +1134,53 @@ async function aoPublicar(e) {
   if (!estado.importacao || !estado.config) return;
   const espera = bloqueio();
   if (espera) { mensagem("msg-publicar", "error", `Muitas tentativas com senha errada. Aguarde ${espera} s.`); return; }
-  if (!$("pub-confirmar-wrap").hidden && !$("pub-confirmar").checked) { mensagem("msg-publicar", "warn", "Marque a confirmação de que revisou os avisos antes de publicar."); return; }
-  const senha = $("pub-senha").value;
+  const c = contarNiveis(estado.importacao.avisos);
+  if (c.erro + c.divergencia > 0 && !$("pub-confirmar").checked) { mensagem("msg-publicar", "warn", "Marque a confirmação de que revisou os avisos antes de publicar."); return; }
+  const sai = periodoQueSai();
+  if (sai && !$("dest-confirmar").checked) { mensagem("msg-publicar", "warn", `Confirme, na etapa 3, que os horários de ${sai.nome} serão substituídos.`); $("sec-destino").scrollIntoView({ behavior: "smooth" }); return; }
   const botao = $("btn-publicar");
   ocupado(botao, true, "Publicando…");
   mensagem("msg-publicar", "info", "Conferindo a senha e enviando os horários…");
   try {
-    const dados = dadosParaPublicar();
-    const link = await publicarHorarios(estado.config, senha, dados);
+    const modo = modoDestino();
+    const op = {
+      tipo: "importar", modo, nome: nomeDestino(), descricao: $("dest-descricao").value.trim(), padrao: $("dest-padrao").checked,
+      alvo: modo === "substituir" ? $("dest-alvo").value : undefined,
+      sai: modo === "novo" && sai ? sai.id : undefined,
+      dados: dadosParaPublicar(),
+    };
+    const r = await alterarPeriodos(estado.config, $("pub-senha").value, op);
     guardar.gravar("horarios-erros", "0");
-    estado.publicado = dados;
-    atualizarStatus();
+    estado.indice = r.indice;
+    if (sai) estado.dadosPorPeriodo.delete(sai.id);
+    if (r.dados) estado.dadosPorPeriodo.set(r.dados.periodo.id, r.dados);
     $("pub-senha").value = "";
-    mensagem("msg-publicar", "success", "Horários publicados! O site público é atualizado em cerca de 1 minuto. ",
-      link ? el("a", { href: link, target: "_blank", rel: "noopener", text: "Ver o registro no GitHub" }) : null);
+    const nome = op.nome;
+    estado.importacao = null;
+    esconderEtapas();
+    renderPeriodosAdmin();
+    mensagem("msg-envio", "success", `${sai ? `Período ${sai.nome} substituído` : `Período ${nome} publicado`}! O site público é atualizado em cerca de 1 minuto. `,
+      r.link ? el("a", { href: r.link, target: "_blank", rel: "noopener", text: "Ver o registro no GitHub" }) : null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (err) {
     if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
-    mensagem("msg-publicar", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível publicar. Tente de novo.");
+    mensagem("msg-publicar", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível publicar. Nada foi alterado. Tente de novo.");
     if (!(err instanceof ErroPublicacao)) console.error(err);
   } finally {
     ocupado(botao, false);
-    botao.disabled = !estado.config;
+    if (estado.importacao) renderResumoDestino();
   }
+}
+
+function renderPublicarConfig() {
+  const r = estado.importacao;
+  $("pub-sem-config").hidden = !!estado.config;
+  $("form-publicar").hidden = !estado.config;
+  if (!estado.config) $("detalhes-config").open = true;
+  if (!r) return;
+  const c = contarNiveis(r.avisos);
+  $("pub-confirmar-wrap").hidden = c.erro + c.divergencia === 0;
+  $("pub-confirmar-texto").textContent = `Revisei ${c.erro ? plural(c.erro, "erro", "erros") + (c.divergencia ? " e " : "") : ""}${c.divergencia ? plural(c.divergencia, "divergência", "divergências") : ""} e quero publicar assim mesmo.`;
 }
 
 function repoPadrao() {
@@ -706,10 +1195,10 @@ function atualizarConfigUI() {
   const c = estado.config;
   $("cfg-repo").value = repoPadrao();
   $("config-status").textContent = c
-    ? `Publicação configurada: repositório ${c.repo} (ramo ${c.ramo || "main"})${c.criadoEm ? ", desde " + new Date(c.criadoEm).toLocaleDateString("pt-BR") : ""}. Para publicar, só a senha é pedida.`
+    ? `Publicação configurada: repositório ${c.repo} (ramo ${c.ramo || "main"})${c.criadoEm ? ", desde " + dataBr(c.criadoEm) : ""}. Para publicar, só a senha é pedida.`
     : "A publicação ainda não foi configurada.";
   $("bloco-trocar-senha").hidden = !c;
-  if (estado.importacao) renderPublicar();
+  renderPublicarConfig();
 }
 
 async function aoConfigurar(e) {
@@ -725,6 +1214,7 @@ async function aoConfigurar(e) {
     for (const id of ["cfg-token", "cfg-senha", "cfg-senha2"]) $(id).value = "";
     mensagem("msg-config", "success", "Configuração salva. A partir de agora, para publicar basta a senha (em qualquer computador).");
     atualizarConfigUI();
+    if (estado.importacao) renderResumoDestino();
   } catch (err) {
     mensagem("msg-config", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível salvar a configuração.");
     if (!(err instanceof ErroPublicacao)) console.error(err);

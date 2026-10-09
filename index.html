@@ -56,53 +56,63 @@
     <!-- ===================== CONSULTA ===================== -->
     <section id="view-consulta">
      <section class="hero-panel glass-surface reveal">
-      <span class="selo">Horários</span>
+      <div id="seletor-periodo" class="seletor-periodo" hidden></div>
+      <span id="selo-consulta" class="selo">Horários</span>
       <h2 id="titulo-consulta" class="titulo-secao">Consulte os horários</h2>
       <p id="descricao-consulta" class="subtitulo">Pesquise ou filtre por curso, turma, professor, sala, turno e dia.</p>
+      <p id="descricao-periodo" class="nota-periodo" hidden></p>
+      <div id="atalho-meu" class="atalho-meu" hidden></div>
 
-      <div class="search-wrap">
-       <i data-lucide="search" class="search-icon"></i>
-       <label class="sr-only" for="busca">Buscar</label>
-       <input id="busca" class="search-input" type="search" autocomplete="off" placeholder="Buscar disciplina, professor, turma ou sala…">
-       <button id="limpar-busca" class="clear-search focus-ring" type="button" aria-label="Limpar busca" hidden><i data-lucide="x"></i></button>
-      </div>
+      <div id="bloco-consulta">
+       <div class="search-wrap">
+        <i data-lucide="search" class="search-icon"></i>
+        <label class="sr-only" for="busca">Buscar</label>
+        <input id="busca" class="search-input" type="search" autocomplete="off" placeholder="Buscar disciplina, professor, turma ou sala…">
+        <button id="limpar-busca" class="clear-search focus-ring" type="button" aria-label="Limpar busca" hidden><i data-lucide="x"></i></button>
+       </div>
 
-      <div class="filtros">
-       <div id="filtro-cursos" class="chips" role="group" aria-label="Filtrar por curso"></div>
-       <div class="filtros-grade">
-        <label><span class="campo-rotulo">Turma</span><select id="filtro-turma" class="text-field"></select></label>
-        <label><span class="campo-rotulo">Professor</span><select id="filtro-professor" class="text-field"></select></label>
-        <label><span class="campo-rotulo">Sala</span><select id="filtro-sala" class="text-field"></select></label>
-        <label><span class="campo-rotulo">Turno</span><select id="filtro-turno" class="text-field"></select></label>
+       <button id="btn-filtros" class="botao botao-secundario btn-filtros" type="button" aria-expanded="false" aria-controls="painel-filtros"><i data-lucide="settings"></i> Filtros <span id="btn-filtros-n" class="contador" hidden></span> <i data-lucide="chevron-down" class="chev"></i></button>
+       <div id="painel-filtros" class="filtros">
+        <div id="filtro-cursos" class="chips" role="group" aria-label="Filtrar por curso"></div>
+        <div class="filtros-grade">
+         <label><span class="campo-rotulo">Turma</span><select id="filtro-turma" class="text-field"></select></label>
+         <label><span class="campo-rotulo">Professor</span><select id="filtro-professor" class="text-field"></select></label>
+         <label><span class="campo-rotulo">Sala</span><select id="filtro-sala" class="text-field"></select></label>
+         <label><span class="campo-rotulo">Turno</span><select id="filtro-turno" class="text-field"></select></label>
+        </div>
+        <div id="filtro-dias" class="chips" role="group" aria-label="Filtrar por dia"></div>
        </div>
-       <div id="filtro-dias" class="chips" role="group" aria-label="Filtrar por dia"></div>
-      </div>
 
-      <div class="barra-resultado">
-       <p id="contagem" class="contagem" aria-live="polite"></p>
-       <button id="btn-limpar-filtros" class="botao-link" type="button" hidden><i data-lucide="undo-2"></i> Limpar filtros</button>
-      </div>
-      <div class="visao" style="margin-top:.75rem">
-       <span class="campo-rotulo" style="margin:0">Agrupar por</span>
-       <div id="seg-agrupar" class="segmentado" role="group" aria-label="Agrupar por">
-        <button type="button" data-valor="turma" aria-pressed="true">Turma</button>
-        <button type="button" data-valor="professor" aria-pressed="false">Professor</button>
-        <button type="button" data-valor="sala" aria-pressed="false">Sala</button>
-        <button type="button" data-valor="dia" aria-pressed="false">Dia</button>
+       <div class="barra-resultado">
+        <p id="contagem" class="contagem" aria-live="polite"></p>
+        <div class="grupo-acoes">
+         <button id="btn-meu-horario" class="botao-link" type="button" aria-pressed="false" hidden><i data-lucide="star"></i> <span id="btn-meu-horario-texto">Salvar como meu horário</span></button>
+         <button id="btn-limpar-filtros" class="botao-link" type="button" hidden><i data-lucide="undo-2"></i> Limpar filtros</button>
+        </div>
        </div>
-       <div id="seg-exibir" class="segmentado" role="group" aria-label="Exibir como">
-        <button type="button" data-valor="grade" aria-pressed="true"><i data-lucide="layout-grid"></i> Semana</button>
-        <button type="button" data-valor="lista" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
+       <div class="visao" style="margin-top:.75rem">
+        <span class="campo-rotulo" style="margin:0">Agrupar por</span>
+        <div id="seg-agrupar" class="segmentado" role="group" aria-label="Agrupar por">
+         <button type="button" data-valor="turma" aria-pressed="true">Turma</button>
+         <button type="button" data-valor="professor" aria-pressed="false">Professor</button>
+         <button type="button" data-valor="sala" aria-pressed="false">Sala</button>
+         <button type="button" data-valor="dia" aria-pressed="false">Dia</button>
+        </div>
+        <div id="seg-exibir" class="segmentado" role="group" aria-label="Exibir como">
+         <button type="button" data-valor="grade" aria-pressed="true"><i data-lucide="layout-grid"></i> Semana</button>
+         <button type="button" data-valor="lista" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
+        </div>
+        <label id="campo-ordenar" hidden><span class="sr-only">Ordenar por</span>
+         <select id="ordenar" class="text-field" style="min-height:40px;padding-top:.35rem;padding-bottom:.35rem">
+          <option value="horario">Ordenar: dia e horário</option>
+          <option value="disciplina">Ordenar: disciplina</option>
+          <option value="turma">Ordenar: turma</option>
+          <option value="professor">Ordenar: professor</option>
+          <option value="sala">Ordenar: sala</option>
+         </select>
+        </label>
+        <button id="btn-imprimir-todos" class="botao-link" type="button" hidden><i data-lucide="printer"></i> <span id="btn-imprimir-todos-texto">Imprimir</span></button>
        </div>
-       <label id="campo-ordenar" hidden><span class="sr-only">Ordenar por</span>
-        <select id="ordenar" class="text-field" style="min-height:40px;padding-top:.35rem;padding-bottom:.35rem">
-         <option value="horario">Ordenar: dia e horário</option>
-         <option value="disciplina">Ordenar: disciplina</option>
-         <option value="turma">Ordenar: turma</option>
-         <option value="professor">Ordenar: professor</option>
-         <option value="sala">Ordenar: sala</option>
-        </select>
-       </label>
       </div>
      </section>
 
@@ -128,6 +138,14 @@
        <p class="texto-pequeno" style="margin-top:.75rem">Só os valores das células são lidos: fórmulas e macros nunca são executadas.</p>
       </section>
 
+      <section class="glass-surface reveal">
+       <div class="rotulo-barra">Períodos letivos publicados</div>
+       <h3 class="titulo-card">Períodos no site</h3>
+       <p class="subtitulo">Até 3 períodos podem ficar disponíveis ao mesmo tempo (ex.: o semestre atual e o próximo). O marcado como <strong>atual</strong> é o que abre primeiro. <span id="periodos-vagas"></span></p>
+       <div id="msg-periodos" class="notice" style="margin-top:1rem" hidden role="status"></div>
+       <div id="lista-periodos" class="lista-periodos"></div>
+      </section>
+
       <section id="sec-leitura" class="glass-surface reveal" hidden>
        <div class="rotulo-barra">1. Leitura</div>
        <h3 class="titulo-card" id="leitura-titulo">Planilha lida</h3>
@@ -143,16 +161,62 @@
        <h3 class="titulo-card">Inconsistências, divergências e dúvidas</h3>
        <p class="subtitulo">Confira os pontos abaixo. Corrija na planilha e envie de novo, ou publique assim mesmo se estiver tudo certo.</p>
        <div id="revisao-resumo" style="margin-top:1rem"></div>
+       <div id="revisao-pendencias" class="pendencias" hidden></div>
        <div id="revisao-niveis" class="chips" style="margin-top:1rem" role="group" aria-label="Filtrar avisos"></div>
        <div id="revisao-lista"></div>
       </section>
 
+      <section id="sec-destino" class="glass-surface reveal" hidden>
+       <div class="rotulo-barra">3. Destino</div>
+       <h3 class="titulo-card">Onde estes horários vão entrar?</h3>
+       <p id="dest-vagas" class="subtitulo"></p>
+       <form id="form-destino" autocomplete="off">
+        <div class="opcoes-destino">
+         <label class="opcao-destino">
+          <input type="radio" name="dest-modo" value="substituir">
+          <span class="opcao-letra">A</span>
+          <span><strong>Substituir os horários de um período existente</strong><small>Os dados antigos desse período são trocados pelos da planilha. Os outros períodos não mudam.</small></span>
+         </label>
+         <label class="opcao-destino">
+          <input type="radio" name="dest-modo" value="novo">
+          <span class="opcao-letra">B</span>
+          <span><strong>Adicionar um novo período letivo</strong><small>Cria outro conjunto de horários (ex.: 2027/1) sem apagar os que já estão no site.</small></span>
+         </label>
+         <div class="opcao-destino opcao-cancelar">
+          <span class="opcao-letra">C</span>
+          <span><strong>Cancelar a importação</strong><small>Descarta a planilha enviada. Nada no site é alterado.</small></span>
+          <button id="btn-cancelar-importacao" class="botao botao-secundario" type="button"><i data-lucide="x"></i> Cancelar</button>
+         </div>
+        </div>
+
+        <div id="dest-bloco-substituir" class="form-grade duas" hidden>
+         <label><span class="campo-rotulo">Período que será substituído</span><select id="dest-alvo" class="text-field"></select></label>
+         <label><span class="campo-rotulo">Nome do período (pode manter ou mudar)</span><input id="dest-nome-subst" class="text-field" type="text" maxlength="40" placeholder="Ex.: 2026/2 novo"></label>
+        </div>
+        <div id="dest-bloco-novo" hidden>
+         <div class="form-grade duas">
+          <label><span class="campo-rotulo">Nome do novo período</span><input id="dest-nome-novo" class="text-field" type="text" maxlength="40" placeholder="Ex.: 2027/1"></label>
+         </div>
+         <div id="dest-cheio" class="notice notice-warn" style="margin-top:1rem" hidden>
+          <i data-lucide="triangle-alert"></i>
+          <span><span id="dest-cheio-texto"></span>
+           <label style="display:block;margin-top:.6rem"><span class="campo-rotulo">Qual período sai para dar lugar ao novo?</span><select id="dest-sai" class="text-field"></select></label></span>
+         </div>
+        </div>
+        <div class="form-grade duas">
+         <label><span class="campo-rotulo">Observação exibida no site (opcional)</span><input id="dest-descricao" class="text-field" type="text" maxlength="120" placeholder="Ex.: válido a partir de 15/10"></label>
+         <label><span class="campo-rotulo">Título no topo do site</span><input id="pub-titulo" class="text-field" type="text" maxlength="120" placeholder="Ex.: IFSul — Campus Sapiranga"></label>
+        </div>
+        <label class="caixa-marcar"><input id="dest-padrao" type="checkbox"> <span>Tornar este o período <strong>atual</strong> (o que abre primeiro no site)</span></label>
+        <div id="dest-resumo" class="notice" style="margin-top:1rem" hidden role="status"></div>
+        <label id="dest-confirmar-wrap" class="caixa-marcar" hidden><input id="dest-confirmar" type="checkbox"> <span id="dest-confirmar-texto"></span></label>
+       </form>
+       <div id="dest-comparacao" class="comparacao" hidden></div>
+      </section>
+
       <section id="sec-publicar" class="glass-surface reveal" hidden>
-       <div class="rotulo-barra">3. Prévia e publicação</div>
-       <h3 class="titulo-card">Publicar os novos horários</h3>
-       <div class="form-grade">
-        <label><span class="campo-rotulo">Título exibido no site</span><input id="pub-titulo" class="text-field" type="text" maxlength="120" placeholder="Ex.: Horários 2026/2 — Campus Sapiranga"></label>
-       </div>
+       <div class="rotulo-barra">4. Prévia e publicação</div>
+       <h3 class="titulo-card">Conferir e publicar</h3>
        <div class="linha-acoes">
         <button id="btn-previa" class="botao botao-suave" type="button"><i data-lucide="eye"></i> Ver prévia do site</button>
         <button id="btn-baixar-json" class="botao botao-secundario" type="button"><i data-lucide="download"></i> Baixar dados (.json)</button>
@@ -170,7 +234,7 @@
          <label><span class="campo-rotulo">Senha de publicação</span><input id="pub-senha" class="text-field" type="password" autocomplete="current-password" required></label>
         </div>
         <div class="linha-acoes">
-         <button id="btn-publicar" class="botao botao-primario" type="submit"><i data-lucide="upload"></i> <span>Publicar horários</span></button>
+         <button id="btn-publicar" class="botao botao-primario" type="submit"><i data-lucide="upload"></i> <span id="btn-publicar-texto">Publicar horários</span></button>
         </div>
        </form>
        <div id="msg-publicar" class="notice" style="margin-top:1rem" hidden role="status"></div>

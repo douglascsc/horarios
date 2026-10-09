@@ -15,6 +15,16 @@ export const DIAS = ["seg", "ter", "qua", "qui", "sex", "sab", "ead"];
 export const NOME_DIA = { seg: "Segunda", ter: "Terça", qua: "Quarta", qui: "Quinta", sex: "Sexta", sab: "Sábado", ead: "EaD" };
 export const NOME_TURNO = { M: "Manhã", T: "Tarde", N: "Noite" };
 
+// Regra de contagem: as aulas destes cursos CONTAM em dobro nos totais de
+// períodos e na carga horária. Só a contagem muda; horários, quadros e
+// duração das aulas continuam iguais.
+export const PESO_POR_CURSO = { PCP: 2 };
+export function pesoDoCurso(curso, regras = PESO_POR_CURSO) {
+  const n = normalizar(curso);
+  for (const [c, peso] of Object.entries(regras || {})) if (normalizar(c) === n) return peso;
+  return 1;
+}
+
 export function normalizar(s) {
   return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -92,6 +102,28 @@ function professoresDe(texto) { return limpar(texto).split(/\s*[,;]\s*/).map((s)
 // Ordenação "natural" (INF2 antes de INF10)
 const colator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 export const comparar = (a, b) => colator.compare(a, b);
+
+const semPontuacao = (v) => normalizar(v).replace(/[.\-–,;:()]/g, " ").replace(/\s+/g, " ").trim();
+
+// Uma letra a mais, a menos ou trocada numa única palavra de 5+ letras;
+// numerais (I, II, IV, 1, 2…) precisam ser iguais.
+const NUMERAL = /^([ivxlc]+|\d+)$/;
+export function umaLetraDeDiferenca(a, b) {
+  const ta = a.split(" "), tb = b.split(" ");
+  if (ta.length !== tb.length) return false;
+  let difs = 0;
+  for (let i = 0; i < ta.length; i++) {
+    if (ta[i] === tb[i]) continue;
+    if (++difs > 1) return false;
+    const x = ta[i], y = tb[i];
+    if (NUMERAL.test(x) || NUMERAL.test(y) || Math.min(x.length, y.length) < 5 || Math.abs(x.length - y.length) > 1) return false;
+    let p = 0;
+    while (p < x.length && x[p] === y[p]) p++;
+    if (x.length === y.length) { if (x.slice(p + 1) !== y.slice(p + 1)) return false; }
+    else if ((x.length > y.length ? x.slice(p + 1) : x.slice(p)) !== (x.length > y.length ? y.slice(p) : y.slice(p + 1))) return false;
+  }
+  return difs === 1;
+}
 
 // ---------------------------------------------------------------- classificação
 // Procura o cabeçalho nas primeiras linhas (pode haver título, linhas em
@@ -248,16 +280,88 @@ export function interpretar(abas, opcoes = {}) {
     if (!qtd) avisar("info", "Abas", `A aba "${aba.nome}" tem o cabeçalho de horários, mas nenhuma linha preenchida.`, aba.nome);
   }
 
+  // ---- 2b. nomes escritos de formas diferentes viram um só na consulta
+  //  - disciplinas e professores: diferença só de acento, maiúscula,
+  //    pontuação ou espaços ("Matematica I" = "Matemática I");
+  //  - só disciplinas: uma letra a mais/menos/trocada numa palavra de 5+
+  //    letras ("Portugues" = "Português"), nunca em numerais (I, II, 1, 2).
+  //  Professores com uma letra de diferença NÃO são unidos (ex.: Juliana e
+  //  Juliane são pessoas diferentes).
+  // Fica a grafia com acentos (a mais completa); empate: a mais usada.
+  const unificar = (rotulo, valores, porLetra, aplicar) => {
+    const chave = (v) => normalizar(v).replace(/[.\-–,;:()]/g, " ").replace(/\s+/g, " ").trim();
+    const grupos = new Map(); // chave -> Map(variante -> {n, locais})
+    for (const { valor, local } of valores) {
+      const k = chave(valor);
+      if (!grupos.has(k)) grupos.set(k, new Map());
+      const g = grupos.get(k);
+      if (!g.has(valor)) g.set(valor, { n: 0, local });
+      g.get(valor).n++;
+    }
+    // junta chaves com uma letra de diferença (union-find simples)
+    const pai = new Map([...grupos.keys()].map((k) => [k, k]));
+    const raiz = (k) => { while (pai.get(k) !== k) k = pai.get(k); return k; };
+    const porLetraUsado = new Set();
+    if (porLetra) {
+      const chaves = [...grupos.keys()];
+      for (let i = 0; i < chaves.length; i++) for (let j = i + 1; j < chaves.length; j++) {
+        if (umaLetraDeDiferenca(chaves[i], chaves[j])) { pai.set(raiz(chaves[j]), raiz(chaves[i])); porLetraUsado.add(chaves[i]); porLetraUsado.add(chaves[j]); }
+      }
+    }
+    const final = new Map(); // raiz -> Map(variante -> info)
+    for (const [k, g] of grupos) {
+      const r = raiz(k);
+      if (!final.has(r)) final.set(r, { variantes: new Map(), porLetra: false });
+      const f = final.get(r);
+      for (const [v, info] of g) f.variantes.set(v, info);
+      if (porLetraUsado.has(k)) f.porLetra = true;
+    }
+    const acentos = (v) => (v.normalize("NFD").match(/[\u0300-\u036f]/g) || []).length;
+    const troca = new Map();
+    for (const f of final.values()) {
+      if (f.variantes.size < 2) continue;
+      const lista = [...f.variantes].sort((x, y) => acentos(y[0]) - acentos(x[0]) || y[1].n - x[1].n || y[0].length - x[0].length);
+      const canonico = lista[0][0];
+      for (const [v] of lista) troca.set(v, canonico);
+      avisar(f.porLetra ? "duvida" : "info", f.porLetra ? `Nomes unificados (${rotulo}, diferença de letra)` : `Nomes unificados (${rotulo})`,
+        `${lista.map(([v, i]) => `"${v}" (${i.n}×)`).join(", ")} aparecem juntos na consulta como "${canonico}".${f.porLetra ? " Confira se são mesmo a mesma " + rotulo + "." : ""}`,
+        lista.map(([, i]) => i.local).join("; "));
+    }
+    if (troca.size) aplicar(troca);
+  };
+  unificar("disciplina", registros.map((g) => ({ valor: g.disciplina, local: g.local })), true,
+    (t) => { for (const g of registros) if (t.has(g.disciplina)) g.disciplina = t.get(g.disciplina); });
+  unificar("professor", registros.flatMap((g) => g.professores.map((p) => ({ valor: p, local: g.local }))), false,
+    (t) => { for (const g of registros) g.professores = g.professores.map((p) => t.get(p) || p); });
+
   // ---- 3. expandir em períodos
+  const pendencias = [];
+  const decisoes = opcoes.decisoesInicio || {};
   const aulas = [];
   for (const g of registros) {
     const periodos = [];
     if (slotsDaGrade) {
       let k = slots.findIndex((s) => s.ini === g.ini);
       if (k < 0) {
+        // o administrador decide: manter o horário informado ou pôr na grade
         k = slots.findIndex((s) => g.ini > s.ini && g.ini < s.fim);
-        const ref = k >= 0 ? `fica dentro do período ${hhmm(slots[k].ini)}–${hhmm(slots[k].fim)}` : "não corresponde a nenhum período";
-        avisar("duvida", "Início fora da grade", `${g.disciplina} (${g.turma}, ${NOME_DIA[g.dia]}): início ${hhmm(g.ini)} ${ref} dos quadros da planilha.${k >= 0 ? " Considerado a partir desse período." : ""}`, g.local);
+        if (k < 0) { // antes do 1º, depois do último ou num intervalo: período mais próximo
+          let melhor = -1, dist = Infinity;
+          slots.forEach((s, i) => { const d = Math.abs(s.ini - g.ini); if (d < dist) { dist = d; melhor = i; } });
+          if (dist <= 60) k = melhor;
+        }
+        const chave = `${g.aba}|${g.linha}`;
+        const quando = `${g.disciplina} (${g.turma}, ${NOME_DIA[g.dia]})`;
+        if (k < 0) avisar("duvida", "Início fora da grade", `${quando}: início ${hhmm(g.ini)} não corresponde a nenhum período dos quadros da planilha; mantido como está.`, g.local);
+        else if (decisoes[chave] === "grade") {
+          avisar("info", "Início ajustado à grade", `${quando}: início ${hhmm(g.ini)} foi colocado na grade, às ${hhmm(slots[k].ini)} (decisão do administrador).`, g.local);
+          g.ini = slots[k].ini;
+        } else if (decisoes[chave] === "manter") {
+          avisar("info", "Início fora da grade autorizado", `${quando}: início ${hhmm(g.ini)} mantido, dentro do período ${hhmm(slots[k].ini)}–${hhmm(slots[k].fim)} (autorizado pelo administrador).`, g.local);
+        } else {
+          pendencias.push({ chave, tipo: "inicio", local: g.local, disciplina: g.disciplina, turma: g.turma, dia: g.dia, inicio: hhmm(g.ini), grade: hhmm(slots[k].ini), gradeFim: hhmm(slots[k].fim) });
+          avisar("duvida", "Início fora da grade", `${quando}: início ${hhmm(g.ini)} não é um horário da grade (${hhmm(slots[k].ini)}–${hhmm(slots[k].fim)}). Decida: manter ${hhmm(g.ini)} ou colocar às ${hhmm(slots[k].ini)}.`, g.local);
+        }
       }
       if (k < 0) { for (let j = 0; j < g.ch; j++) periodos.push({ ini: g.ini + 45 * j, fim: g.ini + 45 * (j + 1) }); }
       else {
@@ -324,23 +428,6 @@ export function interpretar(abas, opcoes = {}) {
   for (const lista of porTurma.values()) if (new Set(lista).size > 1) divididas++;
   if (divididas) avisar("info", "Turmas divididas", `${divididas} período(s) têm a turma dividida em grupos com aulas diferentes ao mesmo tempo (ex.: "Eletricidade I / Robótica"). Isso é esperado e aparece junto na consulta.`);
 
-  // ---- 5. grafias diferentes do mesmo nome
-  const grafias = (rotulo, valores) => {
-    const grupos = new Map();
-    for (const { valor, local } of valores) {
-      const k = normalizar(valor).replace(/[.\-]/g, "");
-      if (!grupos.has(k)) grupos.set(k, new Map());
-      const g = grupos.get(k);
-      if (!g.has(valor)) g.set(valor, local);
-    }
-    for (const g of grupos.values()) {
-      if (g.size < 2) continue;
-      avisar("duvida", `Grafias diferentes (${rotulo})`, `O mesmo nome aparece escrito de formas diferentes: ${[...g.keys()].map((v) => `"${v}"`).join(", ")}. Na consulta eles aparecem separados.`, [...g.values()].join("; "));
-    }
-  };
-  grafias("disciplina", aulas.map((a) => ({ valor: a.disciplina, local: a.local })));
-  grafias("professor", aulas.flatMap((a) => a.professores.map((p) => ({ valor: p, local: a.local }))));
-
   // ---- 6. conferência com os quadros (grades) da planilha
   const parteCelula = (texto) => texto.split("\n").map((l) => l.trim());
   const listaCelula = (linha) => (linha ? linha.split(" / ").map((s) => s.trim()).filter(Boolean) : []);
@@ -400,8 +487,12 @@ export function interpretar(abas, opcoes = {}) {
       const naGrade = new Map(listaCelula(linhas[0]).map((s) => [normalizar(s).replace(/[.\s]+$/, ""), s]));
       const nosDados = mapaEsperado.get(k) || new Map();
       conferidos.celulas++;
-      const soGrade = [...naGrade.keys()].filter((x) => !nosDados.has(x));
-      const soDados = [...nosDados.keys()].filter((x) => !naGrade.has(x));
+      let soGrade = [...naGrade.keys()].filter((x) => !nosDados.has(x));
+      let soDados = [...nosDados.keys()].filter((x) => !naGrade.has(x));
+      // grafias que a consulta junta (acento, pontuação, uma letra) não contam como diferença
+      const mesmo = (x, y) => semPontuacao(x) === semPontuacao(y) || umaLetraDeDiferenca(semPontuacao(x), semPontuacao(y));
+      soGrade = soGrade.filter((x) => !soDados.some((y) => mesmo(x, y)));
+      soDados = soDados.filter((y) => !soGrade.some((x) => mesmo(x, y)) && ![...naGrade.keys()].some((x) => mesmo(x, y)));
       if (!soGrade.length && !soDados.length) continue;
       const partes = [];
       if (soDados.length) partes.push(`a tabela de dados tem ${soDados.map((x) => `"${nosDados.get(x)}"`).join(", ")}`);
@@ -440,12 +531,18 @@ export function interpretar(abas, opcoes = {}) {
     avisar("duvida", "Quadro não identificado", `${conferidos.naoReconhecidos.length} quadro(s) não puderam ser ligados a uma turma, professor ou sala dos dados e não foram conferidos: ${conferidos.naoReconhecidos.slice(0, 12).join("; ")}${conferidos.naoReconhecidos.length > 12 ? "…" : ""}.`);
   }
 
-  // ---- 7. carga horária declarada × soma
+  // ---- 7. carga horária declarada × soma (com a regra de contagem)
+  const regras = opcoes.pesoPorCurso || PESO_POR_CURSO;
   for (const { aba, cab } of abasCarga) {
     const cProf = cab.campos.indexOf("professor"), cCh = cab.campos.indexOf("ch");
-    const soma = new Map();
-    for (const a of aulas) for (const p of a.professores) soma.set(normalizar(p), (soma.get(normalizar(p)) || 0) + a.periodos.length);
+    const soma = new Map(), somaSimples = new Map();
+    for (const a of aulas) for (const p of a.professores) {
+      const k = normalizar(p);
+      soma.set(k, (soma.get(k) || 0) + a.periodos.length * pesoDoCurso(a.curso, regras));
+      somaSimples.set(k, (somaSimples.get(k) || 0) + a.periodos.length);
+    }
     const declarados = new Set();
+    const semDobro = [];
     let conf = 0, dif = 0;
     for (let r = cab.linha + 1; r < aba.linhas.length; r++) {
       const l = aba.linhas[r] || [];
@@ -454,13 +551,20 @@ export function interpretar(abas, opcoes = {}) {
       const decl = typeof l[cCh] === "number" ? l[cCh] : Number(limpar(l[cCh]).replace(",", "."));
       declarados.add(normalizar(nome));
       conf++;
-      const real = soma.get(normalizar(nome)) || 0;
+      const real = soma.get(normalizar(nome)) || 0, simples = somaSimples.get(normalizar(nome)) || 0;
       if (!real) { avisar("duvida", "Carga horária", `${nome} está na aba "${aba.nome}" (${Number.isFinite(decl) ? decl : "?"} períodos), mas não tem nenhuma aula na tabela de dados.`, `${aba.nome}, linha ${r + 1}`); dif++; continue; }
-      if (Number.isFinite(decl) && Math.abs(decl - real) > 0.01) { avisar("divergencia", "Carga horária", `${nome}: a aba "${aba.nome}" informa ${decl} períodos, mas a soma das aulas na tabela de dados dá ${real}.`, `${aba.nome}, linha ${r + 1}`); dif++; }
+      if (!Number.isFinite(decl) || Math.abs(decl - real) < 0.01) continue;
+      // bate só se não contar em dobro: um aviso agrupado no fim
+      if (real !== simples && Math.abs(decl - simples) < 0.01) { semDobro.push(`${nome} (${decl}; com a regra: ${real})`); dif++; continue; }
+      avisar("divergencia", "Carga horária", `${nome}: a aba "${aba.nome}" informa ${decl} períodos, mas a soma das aulas na tabela de dados dá ${real}${real !== simples ? ` (contando em dobro os cursos ${Object.keys(regras).join(", ")})` : ""}.`, `${aba.nome}, linha ${r + 1}`);
+      dif++;
+    }
+    if (semDobro.length) {
+      avisar("duvida", "Carga horária", `A aba "${aba.nome}" não conta em dobro os períodos de ${Object.keys(regras).join(", ")} para ${semDobro.length} professor(es); sem o dobro, os números batem. No site, esses períodos contam em dobro: ${semDobro.join("; ")}.`, aba.nome);
     }
     for (const [n, real] of soma) if (!declarados.has(n)) { avisar("duvida", "Carga horária", `${profsConhecidos.get(n) || n} tem ${real} períodos na tabela de dados, mas não aparece na aba "${aba.nome}".`, aba.nome); dif++; }
     resumoAbas.push({ nome: aba.nome, tipo: "carga", descricao: "Carga horária por professor (usada para conferência)", linhas: conf, colunas: [] });
-    avisar("info", "Carga horária", `Carga horária de ${conf} professor(es) conferida com a soma das aulas: ${dif ? dif + " diferença(s)" : "tudo igual"}.`);
+    avisar("info", "Carga horária", `Carga horária de ${conf} professor(es) conferida com a soma das aulas${Object.keys(regras).length ? ` (períodos de ${Object.keys(regras).join(", ")} contam em dobro)` : ""}: ${dif ? dif + " diferença(s)" : "tudo igual"}.`);
   }
 
   // ---- 8. resultado publicável
@@ -482,11 +586,13 @@ export function interpretar(abas, opcoes = {}) {
     publicadoEm: null,
     periodos: slots.map((s) => [hhmm(s.ini), hhmm(s.fim)]),
     cursos: [...new Set(aulas.map((a) => a.curso))].sort(comparar),
+    pesoPorCurso: regras,
     turmas,
     aulas: aulas.map((a) => ({
       turma: a.turma, curso: a.curso, dia: a.dia, inicio: hhmm(a.ini), fim: hhmm(a.fim), periodos: a.periodos.length,
       turno: a.turno, disciplina: a.disciplina, professores: a.professores, sala: a.sala,
+      ...(pesoDoCurso(a.curso, regras) !== 1 ? { peso: pesoDoCurso(a.curso, regras) } : {}),
     })),
   };
-  return { dados, avisos, abas: resumoAbas, registros: registros.length };
+  return { dados, avisos, abas: resumoAbas, registros: registros.length, pendencias };
 }
