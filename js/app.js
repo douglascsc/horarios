@@ -10,7 +10,7 @@ import {
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
 } from "./publicar.js?v=20261009k";
 import { gerarArquivoOffline } from "./offline.js?v=20261009k";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009k";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009k";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -58,6 +58,7 @@ const estado = {
   agrupar: "turma",
   exibir: "grade",
   ordenar: "horario",
+  comparar: "",          // id do período comparado com o atual ("" = sem comparação)
 };
 const periodos = () => (estado.indice ? estado.indice.periodos : []);
 const periodoPorId = (id) => periodos().find((p) => p.id === id);
@@ -73,6 +74,7 @@ function lerEndereco() {
   estado.agrupar = ["turma", "professor", "sala", "dia"].includes(p.get("agrupar")) ? p.get("agrupar") : "turma";
   estado.exibir = ["grade", "lista"].includes(p.get("ver")) ? p.get("ver") : "grade";
   estado.ordenar = p.get("ordem") || "horario";
+  estado.comparar = p.get("comparar") || "";
   const pid = p.get("periodo");
   estado.periodoId = pid && periodoPorId(pid) ? pid : periodoPadrao();
   return { admin: false };
@@ -84,6 +86,7 @@ function enderecoDaConsulta({ comPeriodo = true } = {}) {
   if (estado.agrupar !== "turma") p.set("agrupar", estado.agrupar);
   if (estado.exibir !== "grade") p.set("ver", estado.exibir);
   if (estado.ordenar !== "horario") p.set("ordem", estado.ordenar);
+  if (estado.comparar) p.set("comparar", estado.comparar);
   return p.toString();
 }
 function gravarEndereco() {
@@ -235,7 +238,7 @@ async function arquivosDaPlanilha() {
   const id = idDoPeriodo(nome) || "horarios";
   const dados = { ...dadosParaPublicar(), periodo: { id, nome } };
   const caminho = `dados/periodos/${id}.json`;
-  const indice = { versao: 2, padrao: id, periodos: [{ id, nome, descricao: $("dest-descricao").value.trim(), arquivo: caminho, publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length, inicioAulas: $("dest-inicio-aulas").value, fimAulas: $("dest-fim-aulas").value }] };
+  const indice = { versao: 2, padrao: id, periodos: [{ id, nome, descricao: $("dest-descricao").value.trim(), arquivo: caminho, publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length, inicioAulas: $("dest-inicio-aulas").value, fimAulas: $("dest-fim-aulas").value, recado: $("dest-recado").value.trim() }] };
   return { arquivos: { [ARQUIVO_INDICE]: indice, [caminho]: dados }, nome: id };
 }
 async function baixarVersaoOffline(botao, montar) {
@@ -375,6 +378,8 @@ function ligarConsulta() {
     $("btn-filtros").setAttribute("aria-expanded", String(f.classList.contains("aberto")));
   });
   $("btn-imprimir-todos").addEventListener("click", () => imprimir(null));
+  $("btn-excel").addEventListener("click", baixarExcel);
+  ligarBarraMovel();
   $("btn-meu-horario").addEventListener("click", alternarMeuHorario);
 }
 
@@ -468,7 +473,8 @@ function renderSeletorPeriodo() {
       type: "button", "aria-pressed": String(p.id === estado.periodoId), title: p.descricao || "",
       onclick: () => trocarPeriodo(p.id),
     }, icone("calendar-days"), p.nome, p.id === padrao && ps.length > 1 ? el("span", { class: "tag-atual", text: "atual" }) : null)));
-  box.replaceChildren(el("span", { class: "campo-rotulo", style: "margin:0" }, "Período letivo"), seg);
+  const btnComparar = ps.length > 1 ? el("button", { type: "button", class: "botao-link", "aria-pressed": String(!!estado.comparar), onclick: abrirComparacao, title: "Ver o que muda entre dois períodos" }, icone("git-compare"), estado.comparar ? "Comparando" : "Comparar") : null;
+  box.replaceChildren(el("span", { class: "campo-rotulo", style: "margin:0" }, "Período letivo"), seg, btnComparar || "");
 }
 
 function renderConsulta() {
@@ -481,7 +487,17 @@ function renderConsulta() {
   $("selo-consulta").hidden = !$("seletor-periodo").hidden; // o seletor já mostra o período
   $("descricao-periodo").textContent = !estado.previa && p && p.descricao ? p.descricao : "";
   $("descricao-periodo").hidden = !$("descricao-periodo").textContent;
+  const recado = !estado.previa && p && p.recado ? p.recado : estado.previa ? ($("dest-recado")?.value || "").trim() : "";
+  $("recado-periodo").hidden = !recado;
+  if (recado) $("recado-periodo").replaceChildren(icone("megaphone"), el("span", { text: recado }));
+  if (estado.comparar && (estado.previa || !periodoPorId(estado.comparar) || estado.comparar === estado.periodoId)) estado.comparar = "";
+  const outro = periodoPorId(estado.comparar);
+  $("aviso-comparacao").hidden = !outro;
+  if (outro) $("aviso-comparacao").replaceChildren(icone("git-compare"),
+    el("span", null, "Comparando ", el("strong", { text: p ? p.nome : "" }), " com ", el("strong", { text: outro.nome }), ". Os filtros valem para os dois períodos."),
+    el("button", { type: "button", class: "botao-link", onclick: () => { estado.comparar = ""; gravarEndereco(); renderConsulta(); } }, icone("x"), "Sair da comparação"));
   if (vazioTotal) {
+    atualizarBarraMovel();
     $("titulo-consulta").textContent = "Consulte os horários";
     $("descricao-consulta").textContent = "";
     $("resultados").replaceChildren(periodos().length && !estado.previa
@@ -629,6 +645,8 @@ function renderResultados() {
     ativos ? ` (de ${idx.aulas.length})` : "");
 
   const res = $("resultados");
+  atualizarBarraMovel();
+  if (estado.comparar && periodoPorId(estado.comparar)) { renderComparacaoPeriodos(aulas); return; }
   if (!aulas.length && f.agora) {
     $("btn-imprimir-todos").hidden = true;
     const m = new Date().getHours() * 60 + new Date().getMinutes();
@@ -881,6 +899,105 @@ function renderSemana(aulas, idx, dados = dadosAtivos() || {}) {
   return el("div", null, ...partes);
 }
 
+// ---- Excel: as aulas mostradas (com os filtros atuais)
+function baixarExcel() {
+  const dados = dadosAtivos();
+  if (!dados || !dados.aulas.length) return;
+  const idx = indice(dados);
+  const aulas = filtrar(idx).slice().sort((a, b) => DIAS.indexOf(a.dia) - DIAS.indexOf(b.dia) || a.ini - b.ini || comparar(a.turma, b.turma));
+  const p = periodoPorId(estado.periodoId);
+  const nomeP = estado.previa ? (dados.periodo && dados.periodo.nome) || "prévia" : p ? p.nome : "";
+  const comPeso = aulas.some((a) => (a.peso || 1) !== 1);
+  const cabecalho = ["Período letivo", "Dia", "Início", "Fim", "Períodos", ...(comPeso ? ["Períodos (contagem)"] : []), "Turma", "Curso", "Disciplina", "Professor(es)", "Sala", "Turno"];
+  const linhas = aulas.map((a) => [nomeP, NOME_DIA[a.dia], a.inicio, a.fim, a.periodos || 1, ...(comPeso ? [(a.periodos || 1) * (a.peso || 1)] : []), a.turma, a.curso, a.disciplina, (a.professores || []).join(", "), a.sala || (a.dia === "ead" ? "EaD" : ""), NOME_TURNO[a.turno] || ""]);
+  const desc = descricaoFiltros(estado.filtros);
+  const blob = gerarXlsx({ nomeAba: desc || "Horários", cabecalho, linhas });
+  baixarArquivo(blob, `horarios-${nomeArquivo(desc || "completo")}${nomeP ? "-" + nomeArquivo(nomeP) : ""}.xlsx`);
+}
+
+// ---- comparar o período atual com outro (mesmos filtros nos dois)
+function abrirComparacao() {
+  if (estado.comparar) { estado.comparar = ""; gravarEndereco(); renderConsulta(); return; }
+  const atual = periodoPorId(estado.periodoId);
+  const outros = periodos().filter((p) => p.id !== estado.periodoId);
+  if (outros.length === 1) { estado.comparar = outros[0].id; gravarEndereco(); renderConsulta(); return; }
+  abrirModal(`Comparar ${atual ? atual.nome : ""} com…`,
+    el("p", { class: "subtitulo", style: "margin-top:0", text: "Mostra o que só existe em um dos períodos e o que mudou de professor, sala ou horário de término. Os filtros escolhidos (turma, professor, sala…) valem para os dois." }),
+    el("div", { class: "linha-acoes" }, ...outros.map((o) => el("button", { type: "button", class: "botao botao-secundario", onclick: () => { fecharModal(); estado.comparar = o.id; gravarEndereco(); renderConsulta(); } }, icone("calendar-days"), o.nome))));
+}
+async function renderComparacaoPeriodos(aulasA) {
+  const res = $("resultados");
+  const pA = periodoPorId(estado.periodoId), pB = periodoPorId(estado.comparar);
+  $("btn-imprimir-todos").hidden = true;
+  if (!estado.dadosPorPeriodo.has(pB.id)) {
+    res.replaceChildren(el("p", { class: "contagem", style: "text-align:center;padding:2rem", text: `Carregando ${pB.nome}…` }));
+    await garantirPeriodo(pB.id);
+    if (estado.comparar !== pB.id) return;
+  }
+  const dB = estado.dadosPorPeriodo.get(pB.id);
+  if (!dB) { res.replaceChildren(estadoVazio("circle-alert", `Não foi possível carregar ${pB.nome}`, "Verifique a conexão e tente de novo.", null)); return; }
+  const aulasB = filtrar(indice(dB));
+  const c = compararVersoes(aulasA, aulasB);
+  const ordem = (l) => l.slice().sort((a, b) => DIAS.indexOf(a.dia) - DIAS.indexOf(b.dia) || minutos(a.inicio) - minutos(b.inicio) || comparar(a.turma, b.turma));
+  const bloco = (titulo, desc, itens, render) => el("section", { class: "glass-surface grupo reveal" },
+    el("div", { class: "grupo-topo" }, el("div", null, el("div", { class: "grupo-tipo", text: "Comparação" }), el("h3", { class: "grupo-nome", text: titulo }), el("div", { class: "grupo-meta", text: desc }))),
+    itens.length ? el("div", { class: "lista-aulas" }, ...itens.map(render)) : el("p", { class: "texto-pequeno", style: "margin-top:.75rem", text: "Nenhuma." }));
+  const comNota = (a, nota) => { const card = cartaoAula(a, { comDia: true }); card.append(el("div", { class: "nota-comparacao", text: nota })); return card; };
+  res.replaceChildren(
+    el("section", { class: "glass-surface grupo resumo-comparacao reveal" },
+      el("div", { class: "estatisticas estatisticas-4" },
+        el("div", { class: "estatistica" }, el("strong", { text: String(c.iguais) }), el("span", { text: "iguais nos dois" })),
+        el("div", { class: "estatistica est-nova" }, el("strong", { text: String(c.novas.length) }), el("span", { text: `só em ${pB.nome}` })),
+        el("div", { class: "estatistica est-saiu" }, el("strong", { text: String(c.removidas.length) }), el("span", { text: `só em ${pA ? pA.nome : ""}` })),
+        el("div", { class: "estatistica est-mudou" }, el("strong", { text: String(c.mudadas.length) }), el("span", { text: "mudaram professor, sala ou término" })))),
+    bloco(`Só em ${pB.nome}`, "Aulas que aparecem no outro período e não neste.", ordem(c.novas), (a) => cartaoAula(a, { comDia: true })),
+    bloco(`Só em ${pA ? pA.nome : ""}`, "Aulas deste período que não existem no outro.", ordem(c.removidas), (a) => cartaoAula(a, { comDia: true })),
+    bloco("Mudaram", `Mesma turma, dia, horário e disciplina, com outro professor, sala ou término em ${pB.nome}.`, c.mudadas.sort((x, y) => DIAS.indexOf(x[1].dia) - DIAS.indexOf(y[1].dia) || minutos(x[1].inicio) - minutos(y[1].inicio)),
+      ([a, b]) => comNota(b, `Em ${pA ? pA.nome : ""}: ${detalheAula(a)}${a.fim !== b.fim ? ", até " + a.fim : ""}`)));
+}
+
+// ---- barra fixa no celular: Filtros, Agora, Hoje e Topo à mão
+function ligarBarraMovel() {
+  $("barra-movel").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-acao]");
+    if (!b || b.disabled) return;
+    const f = estado.filtros;
+    if (b.dataset.acao === "filtros") {
+      $("painel-filtros").classList.add("aberto");
+      $("btn-filtros").setAttribute("aria-expanded", "true");
+      $("btn-filtros").scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => $("btn-filtros").focus({ preventScroll: true }), 400);
+      return;
+    }
+    if (b.dataset.acao === "topo") { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (b.dataset.acao === "agora") { f.agora = f.agora ? "" : "1"; f.dia = ""; f.mudou = ""; estado.exibir = f.agora ? "lista" : "grade"; }
+    if (b.dataset.acao === "hoje") { const h = diaDeHoje(); f.dia = f.dia === h ? "" : h; f.agora = ""; }
+    gravarEndereco(); renderConsulta();
+    $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  // teclado virtual aberto: a barra sai do caminho
+  document.addEventListener("focusin", (e) => { if (e.target.matches && e.target.matches("input, select, textarea")) document.body.classList.add("digitando"); });
+  document.addEventListener("focusout", () => document.body.classList.remove("digitando"));
+}
+function atualizarBarraMovel() {
+  const bar = $("barra-movel");
+  const dados = dadosAtivos();
+  const mostrar = !!dados && dados.aulas.length > 0 && !$("view-consulta").hidden;
+  bar.hidden = !mostrar;
+  document.body.classList.toggle("com-barra", mostrar);
+  if (!mostrar) return;
+  const f = estado.filtros, idx = indice(dados), hoje = diaDeHoje();
+  const podeAgora = !estado.previa && estado.periodoId === periodoPadrao() && !!hoje;
+  const bAgora = bar.querySelector('[data-acao="agora"]'), bHoje = bar.querySelector('[data-acao="hoje"]');
+  bAgora.hidden = !podeAgora;
+  bAgora.setAttribute("aria-pressed", String(!!f.agora));
+  bHoje.disabled = !hoje || !idx.dias.includes(hoje);
+  bHoje.setAttribute("aria-pressed", String(!!hoje && f.dia === hoje));
+  const n = ["curso", "turma", "professor", "sala", "turno", "dia", "agora", "mudou"].filter((k) => f[k]).length;
+  $("barra-movel-n").textContent = n ? String(n) : "";
+  $("barra-movel-n").hidden = !n;
+}
+
 // ---- "Meu horário": guarda a consulta atual neste aparelho
 const CHAVE_MEU = "horarios-meu";
 function descricaoFiltros(f) {
@@ -924,6 +1041,8 @@ function alternarMeuHorario() {
 // ================================================================= ADMIN
 function mostrarAdmin() {
   $("carregando").hidden = true;
+  $("barra-movel").hidden = true;
+  document.body.classList.remove("com-barra");
   $("view-consulta").hidden = true;
   $("view-admin").hidden = false;
   $("barra-previa").hidden = true;
@@ -1156,6 +1275,7 @@ function prepararDestino(r) {
   const base = igual || null;
   $("dest-inicio-aulas").value = base && base.inicioAulas ? base.inicioAulas : "";
   $("dest-fim-aulas").value = base && base.fimAulas ? base.fimAulas : "";
+  $("dest-recado").value = base && base.recado ? base.recado : "";
   $("dest-padrao").checked = !ps.length;
   $("dest-confirmar").checked = false;
   $("dest-alvo").dataset.anterior = $("dest-alvo").value;
@@ -1370,7 +1490,7 @@ function formAcao(p) {
   const { tipo } = acaoPeriodo;
   const textos = {
     padrao: `"${p.nome}" passará a ser o período que abre primeiro no site. Nenhum horário muda.`,
-    renomear: `Mude o nome, a observação ou as datas do período "${p.nome}". Os horários não mudam.`,
+    renomear: `Mude o nome, a observação, o recado ou as datas do período "${p.nome}". Os horários não mudam.`,
     remover: `O período "${p.nome}" (${plural(p.aulas || 0, "aula", "aulas")}) deixará de aparecer no site. Os outros períodos não mudam. A versão removida fica guardada no histórico de versões.`,
   };
   const form = el("form", { class: `acao-periodo acao-${tipo}`, autocomplete: "off" },
@@ -1378,6 +1498,7 @@ function formAcao(p) {
     tipo === "renomear" ? el("div", { class: "form-grade duas" },
       el("label", null, el("span", { class: "campo-rotulo", text: "Nome do período" }), el("input", { id: "acao-nome", class: "text-field", type: "text", maxlength: "40", value: p.nome, required: true })),
       el("label", null, el("span", { class: "campo-rotulo", text: "Observação (opcional)" }), el("input", { id: "acao-descricao", class: "text-field", type: "text", maxlength: "120", value: p.descricao || "", placeholder: "Ex.: válido a partir de 15/10" })),
+      el("label", { class: "campo-largo" }, el("span", { class: "campo-rotulo", text: "Recado em destaque no site (opcional)" }), el("input", { id: "acao-recado", class: "text-field", type: "text", maxlength: "240", value: p.recado || "", placeholder: "Ex.: Horário provisório até 20/10" })),
       el("label", null, el("span", { class: "campo-rotulo", text: "Primeiro dia de aula (agenda)" }), el("input", { id: "acao-inicio", class: "text-field", type: "date", value: p.inicioAulas || "" })),
       el("label", null, el("span", { class: "campo-rotulo", text: "Último dia de aula (agenda)" }), el("input", { id: "acao-fim", class: "text-field", type: "date", value: p.fimAulas || "" }))) : null,
     tipo === "remover" ? el("label", { class: "caixa-marcar" }, el("input", { id: "acao-confirmar", type: "checkbox", required: true }), el("span", { text: `Confirmo a remoção de ${p.nome}.` })) : null,
@@ -1399,6 +1520,7 @@ function formAcao(p) {
       if (tipo === "renomear") {
         op.nome = $("acao-nome").value; op.descricao = $("acao-descricao").value;
         op.datas = { inicio: $("acao-inicio").value, fim: $("acao-fim").value };
+        op.recado = $("acao-recado").value;
         if (op.datas.inicio && op.datas.fim && op.datas.inicio > op.datas.fim) throw new ErroPublicacao("O primeiro dia de aula precisa ser antes do último.");
       }
       const r = await alterarPeriodos(estado.config, $("acao-senha").value, op);
@@ -1480,6 +1602,7 @@ async function aoPublicar(e) {
       alvo: modo === "substituir" ? $("dest-alvo").value : undefined,
       sai: modo === "novo" && sai ? sai.id : undefined,
       datas: { inicio: ini, fim: fimA },
+      recado: $("dest-recado").value,
       dados,
     };
     const r = await alterarPeriodos(estado.config, $("pub-senha").value, op);
