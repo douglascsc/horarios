@@ -1,6 +1,6 @@
 // Recursos auxiliares da consulta: arquivo de agenda (.ics) e comparação
 // entre duas versões de um período (o que mudou).
-import { normalizar } from "./interpretar.js?v=20261009n";
+import { normalizar } from "./interpretar.js?v=20261009o";
 
 // ---------------------------------------------------------------- agenda (.ics)
 const DIA_SEMANA = { seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };

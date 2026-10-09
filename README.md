@@ -33,6 +33,8 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 
 **Área do administrador** (`…/#admin`)
 
+**Entrada com a senha de publicação**: depois que a publicação está configurada, a área do administrador só abre com a senha de publicação, a mesma criada junto com o token. Enquanto a aba estiver aberta, a senha não é pedida de novo para publicar, editar, remover ou mexer na senha de leitura. Fechar ou recarregar a página, ou clicar em "Sair", pede a senha outra vez. Ela fica só na memória da aba, nunca é gravada no aparelho. Trocar a própria senha continua pedindo a senha atual. Antes da primeira configuração, a área fica aberta, para que seja possível configurar.
+
 Ao enviar uma planilha, a área vira um **assistente em 4 passos**, com uma barra de etapas no topo e os botões Voltar/Próximo. O site só deixa avançar quando o passo está resolvido e diz o que falta.
 
 1. **Planilha**: envio do `.xlsx` (por clique ou arrastando o arquivo).
@@ -146,9 +148,9 @@ O GitHub só aceita gravações com um token. Para que o administrador precise a
 
 1. Na configuração (feita **uma vez**), o administrador cola um token *fine-grained* com acesso **só a este repositório** e permissão **Contents: Read and write**, e escolhe uma senha de **pelo menos 10 caracteres**.
 2. O navegador cifra o token com **AES-GCM**, usando uma chave derivada da senha (**PBKDF2-SHA256, 600 mil iterações**, sal aleatório), e grava o resultado em `dados/publicacao.json`.
-3. Para publicar, em qualquer computador, basta a senha. O token é decifrado na memória, usado e descartado. Com a senha errada, nada é enviado.
+3. Para entrar na área do administrador e publicar, em qualquer computador, basta a senha. O token é decifrado na memória, usado e descartado. Com a senha errada, nada é enviado.
 
-**Riscos aceitos.** O arquivo cifrado é público, então alguém pode tentar adivinhar a senha fora do site. As 600 mil iterações tornam isso lento, mas a segurança depende de uma **senha forte**. Mesmo que a senha seja descoberta, o token só consegue alterar este repositório, e cada alteração fica no histórico, de onde pode ser desfeita. Se houver suspeita, revogue o token no GitHub e refaça a configuração. Quando o token expira, o site avisa e é só configurar de novo. O limite de 5 tentativas por minuto vale apenas no aparelho onde as senhas foram digitadas.
+**Riscos aceitos.** O arquivo cifrado é público, então alguém pode tentar adivinhar a senha fora do site. As 600 mil iterações tornam isso lento, mas a segurança depende de uma **senha forte**. Mesmo que a senha seja descoberta, o token só consegue alterar este repositório, e cada alteração fica no histórico, de onde pode ser desfeita. Se houver suspeita, revogue o token no GitHub e refaça a configuração. Quando o token expira, o site avisa e é só configurar de novo. O limite de 5 tentativas por minuto vale apenas no aparelho onde as senhas foram digitadas. A tela de entrada da área do administrador é uma conveniência: como o site é estático, o código da página é público. O que de fato protege a publicação é o token cifrado, que só a senha certa abre.
 
 ### Como configurar
 

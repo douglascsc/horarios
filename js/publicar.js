@@ -13,7 +13,7 @@ export const TAMANHO_MINIMO_SENHA = 10;
 export const ARQUIVO_CONFIG = "dados/publicacao.json";
 export const ARQUIVO_DADOS = "dados/horarios.json"; // formato antigo (um período só), ainda lido se não houver índice
 
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009n";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009o";
 
 export class ErroPublicacao extends Error {}
 

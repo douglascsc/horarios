@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009n"></script>
-  <script src="js/icones.js?v=20261009n"></script>
+  <script src="js/protecao.js?v=20261009o"></script>
+  <script src="js/icones.js?v=20261009o"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009n">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009o">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,13 +23,13 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="modulepreload" href="js/interpretar.js?v=20261009n">
-  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009n">
-  <link rel="modulepreload" href="js/publicar.js?v=20261009n">
-  <link rel="modulepreload" href="js/recursos.js?v=20261009n">
-  <link rel="modulepreload" href="js/offline.js?v=20261009n">
-  <link rel="modulepreload" href="js/leitura.js?v=20261009n">
-  <script type="module" src="js/app.js?v=20261009n"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009o">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009o">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009o">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009o">
+  <link rel="modulepreload" href="js/offline.js?v=20261009o">
+  <link rel="modulepreload" href="js/leitura.js?v=20261009o">
+  <script type="module" src="js/app.js?v=20261009o"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -159,7 +159,20 @@
 
     <!-- ===================== ADMINISTRADOR ===================== -->
     <section id="view-admin" hidden>
-     <div class="passos">
+     <section id="portao-admin" class="glass-surface portao" hidden aria-labelledby="portao-admin-titulo">
+      <div class="portao-icone" aria-hidden="true"><i data-lucide="lock"></i></div>
+      <h2 id="portao-admin-titulo" class="titulo-secao">Área do administrador</h2>
+      <p class="subtitulo">Digite a senha de publicação, a mesma criada junto com o token. Enquanto esta aba estiver aberta, ela não é pedida de novo para publicar, editar ou remover.</p>
+      <form id="form-portao-admin" autocomplete="off">
+       <label><span class="campo-rotulo">Senha de publicação</span><input id="adm-senha" class="text-field" type="password" autocomplete="current-password" required></label>
+       <div class="linha-acoes">
+        <button id="btn-portao-admin" class="botao botao-primario" type="submit"><i data-lucide="key-round"></i> <span>Entrar</span></button>
+        <button id="btn-portao-admin-voltar" class="botao botao-secundario" type="button"><i data-lucide="arrow-left"></i> Voltar à consulta</button>
+       </div>
+      </form>
+      <div id="msg-portao-admin" class="notice notice-error" style="margin-top:1rem" hidden role="alert"></div>
+     </section>
+     <div id="admin-conteudo" class="passos">
       <nav id="etapas" class="etapas glass-surface" aria-labelledby="etapas-titulo" hidden>
        <h2 id="etapas-titulo" class="sr-only">Importar planilha: etapas</h2>
        <ol>
@@ -172,7 +185,10 @@
       </nav>
 
       <section id="sec-envio" class="hero-panel glass-surface reveal">
-       <button id="btn-admin-voltar" class="botao-link" type="button"><i data-lucide="arrow-left"></i> Voltar à consulta</button>
+       <div class="linha-topo-admin">
+        <button id="btn-admin-voltar" class="botao-link" type="button"><i data-lucide="arrow-left"></i> Voltar à consulta</button>
+        <button id="btn-admin-sair" class="botao-link" type="button" hidden><i data-lucide="log-out"></i> Sair</button>
+       </div>
        <span class="selo" style="margin-top:.5rem">Área do administrador</span>
        <h2 class="titulo-secao">Atualizar os horários</h2>
        <p class="subtitulo">Envie a planilha do Excel. O site lê os dados, monta a consulta e mostra o que precisa ser revisado. A planilha é lida aqui no seu navegador; nada é publicado antes de você confirmar com a senha.</p>

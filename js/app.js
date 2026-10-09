@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009n";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009n";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009o";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009o";
 import {
-  alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
+  alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009n";
-import { gerarArquivoOffline } from "./offline.js?v=20261009n";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009n";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009n";
+} from "./publicar.js?v=20261009o";
+import { gerarArquivoOffline } from "./offline.js?v=20261009o";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009o";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009o";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -54,6 +54,7 @@ const estado = {
   dadosPorPeriodo: new Map(), // id -> dados (carregados sob demanda)
   periodoId: "",         // período em consulta
   config: null,          // dados/publicacao.json
+  senhaAdmin: "",        // senha de publicação digitada ao entrar (só na memória desta aba)
   importacao: null,      // resultado de interpretar() da planilha enviada
   previa: false,
   filtros: FILTROS_VAZIOS(),
@@ -206,6 +207,7 @@ async function iniciar() {
   ligarAplicativo();
   ligarPortao();
   ligarEtapas();
+  ligarPortaoAdmin();
   $("form-leitura").addEventListener("submit", aoMudarLeitura);
   $("form-leitura-remover").addEventListener("submit", aoRemoverLeitura);
   const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
@@ -1121,10 +1123,65 @@ function mostrarAdmin() {
   estado.periodoId = periodoPadrao();
   atualizarStatus();
   garantirPeriodo(estado.periodoId).then(atualizarStatus);
+  const trancado = !!estado.config && !estado.senhaAdmin;
+  $("portao-admin").hidden = !trancado;
+  $("admin-conteudo").hidden = trancado;
+  $("btn-admin-sair").hidden = !estado.senhaAdmin;
+  window.scrollTo({ top: 0 });
+  if (trancado) { $("msg-portao-admin").hidden = true; setTimeout(() => $("adm-senha").focus(), 0); return; }
+  aplicarSessaoAdmin();
   renderPeriodosAdmin();
   if (estado.importacao) renderDestino();
   renderEtapas();
-  window.scrollTo({ top: 0 });
+}
+
+// ---- entrada no administrador com a senha de publicação
+// A senha fica só na memória desta aba: fechar ou recarregar a página, ou
+// "Sair", pede de novo. Com ela, os campos de senha das ações somem.
+function senhaDe(id) { return estado.senhaAdmin || $(id).value; }
+function aplicarSessaoAdmin() {
+  for (const id of ["pub-senha", "lei-pub", "lei-pub2"]) {
+    const campo = $(id);
+    campo.closest("label").hidden = !!estado.senhaAdmin;
+    campo.required = !estado.senhaAdmin;
+  }
+}
+function entrouNoAdmin(senha) {
+  estado.senhaAdmin = senha;
+  guardar.gravar("horarios-erros", "0");
+}
+function sairDoAdmin(aviso) {
+  estado.senhaAdmin = "";
+  aplicarSessaoAdmin();
+  if (!$("view-admin").hidden) mostrarAdmin();
+  if (aviso) { $("msg-portao-admin").textContent = aviso; $("msg-portao-admin").hidden = false; }
+}
+// senha recusada numa ação: se veio da entrada, ela mudou em outro aparelho
+function senhaRecusada() {
+  registrarErroSenha();
+  if (estado.senhaAdmin) sairDoAdmin("A senha de publicação mudou. Entre de novo com a senha atual.");
+}
+function ligarPortaoAdmin() {
+  $("form-portao-admin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const espera = bloqueio();
+    if (espera) { $("msg-portao-admin").textContent = `Muitas tentativas com senha errada. Aguarde ${espera} s.`; $("msg-portao-admin").hidden = false; return; }
+    const botao = $("btn-portao-admin");
+    ocupado(botao, true, "Verificando…");
+    try {
+      await decifrarToken(estado.config, $("adm-senha").value);
+      entrouNoAdmin($("adm-senha").value);
+      $("adm-senha").value = "";
+      mostrarAdmin();
+    } catch {
+      registrarErroSenha();
+      $("msg-portao-admin").textContent = "Senha incorreta.";
+      $("msg-portao-admin").hidden = false;
+      $("adm-senha").select();
+    } finally { ocupado(botao, false); }
+  });
+  $("btn-portao-admin-voltar").addEventListener("click", () => { location.hash = ""; });
+  $("btn-admin-sair").addEventListener("click", () => sairDoAdmin());
 }
 
 function mensagem(id, tipo, texto, extra) {
@@ -1659,7 +1716,7 @@ function formAcao(p) {
       el("label", null, el("span", { class: "campo-rotulo", text: "Primeiro dia de aula (agenda)" }), el("input", { id: "acao-inicio", class: "text-field", type: "date", value: p.inicioAulas || "" })),
       el("label", null, el("span", { class: "campo-rotulo", text: "Último dia de aula (agenda)" }), el("input", { id: "acao-fim", class: "text-field", type: "date", value: p.fimAulas || "" }))) : null,
     tipo === "remover" ? el("label", { class: "caixa-marcar" }, el("input", { id: "acao-confirmar", type: "checkbox", required: true }), el("span", { text: `Confirmo a remoção de ${p.nome}.` })) : null,
-    el("div", { class: "form-grade duas" },
+    estado.senhaAdmin ? null : el("div", { class: "form-grade duas" },
       el("label", null, el("span", { class: "campo-rotulo", text: "Senha de publicação" }), el("input", { id: "acao-senha", class: "text-field", type: "password", autocomplete: "current-password", required: true }))),
     el("div", { class: "linha-acoes" },
       el("button", { type: "submit", class: `botao ${tipo === "remover" ? "botao-perigo-cheio" : "botao-primario"}` }, el("span", { text: { padrao: "Tornar atual", renomear: "Salvar", remover: `Remover ${p.nome}` }[tipo] })),
@@ -1680,7 +1737,7 @@ function formAcao(p) {
         op.recado = $("acao-recado").value;
         if (op.datas.inicio && op.datas.fim && op.datas.inicio > op.datas.fim) throw new ErroPublicacao("O primeiro dia de aula precisa ser antes do último.");
       }
-      const r = await alterarPeriodos(estado.config, $("acao-senha").value, op);
+      const r = await alterarPeriodos(estado.config, senhaDe("acao-senha"), op);
       guardar.gravar("horarios-erros", "0");
       estado.indice = r.indice;
       if (tipo === "remover") estado.dadosPorPeriodo.delete(p.id);
@@ -1689,7 +1746,7 @@ function formAcao(p) {
       if (estado.importacao) { prepararDestino(estado.importacao); renderDestino(); }
       mensagem("msg-periodos", "success", "Feito. O site público é atualizado em cerca de 1 minuto.");
     } catch (err) {
-      if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+      if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") senhaRecusada();
       mensagem("msg-acao", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível gravar. Tente de novo.");
       if (!(err instanceof ErroPublicacao)) console.error(err);
       ocupado(botao, false);
@@ -1762,7 +1819,7 @@ async function aoPublicar(e) {
       recado: $("dest-recado").value,
       dados,
     };
-    const r = await alterarPeriodos(estado.config, $("pub-senha").value, op);
+    const r = await alterarPeriodos(estado.config, senhaDe("pub-senha"), op);
     guardar.gravar("horarios-erros", "0");
     estado.indice = r.indice;
     if (sai) estado.dadosPorPeriodo.delete(sai.id);
@@ -1775,7 +1832,7 @@ async function aoPublicar(e) {
     mensagem("msg-envio", "success", `${sai ? `Período ${sai.nome} substituído` : `Período ${nome} publicado`}! O site público é atualizado em cerca de 1 minuto.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (err) {
-    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") senhaRecusada();
     mensagem("msg-publicar", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível publicar. Nada foi alterado. Tente de novo.");
     if (!(err instanceof ErroPublicacao)) console.error(err);
   } finally {
@@ -1827,7 +1884,7 @@ function atualizarConfigUI() {
 async function aoMudarLeitura(e) {
   e.preventDefault();
   if (!estado.config) return;
-  const nova = $("lei-nova").value, nova2 = $("lei-nova2").value, pub = $("lei-pub").value;
+  const nova = $("lei-nova").value, nova2 = $("lei-nova2").value, pub = senhaDe("lei-pub");
   if (nova !== nova2) { mensagem("msg-leitura", "error", "As duas senhas de leitura não são iguais."); return; }
   if (nova.length < TAMANHO_MINIMO_SENHA_LEITURA) { mensagem("msg-leitura", "error", `A senha de leitura precisa ter pelo menos ${TAMANHO_MINIMO_SENHA_LEITURA} caracteres.`); return; }
   const espera = bloqueio();
@@ -1846,7 +1903,7 @@ async function aoMudarLeitura(e) {
     mensagem("msg-leitura", "success", `${protegido ? "Senha de leitura trocada" : "Horários protegidos"}. Em cerca de 1 minuto o site passa a pedir a senha. Passe a senha aos professores por um canal seguro.`);
     atualizarConfigUI();
   } catch (err) {
-    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") senhaRecusada();
     mensagem("msg-leitura", "error", err instanceof ErroPublicacao ? (err.message === "Senha incorreta." ? "Senha de publicação incorreta." : err.message) : "Não foi possível gravar. Nada foi alterado.");
     if (!(err instanceof ErroPublicacao)) console.error(err);
   } finally { ocupado(botao, false); }
@@ -1857,14 +1914,14 @@ async function aoRemoverLeitura(e) {
   const botao = $("btn-leitura-remover");
   ocupado(botao, true, "Removendo…");
   try {
-    const r = await removerProtecaoLeitura(estado.config, $("lei-pub2").value);
+    const r = await removerProtecaoLeitura(estado.config, senhaDe("lei-pub2"));
     estado.config = r.config; estado.leitura = null; estado.chaveLeitura = null;
     guardar.apagar(CHAVE_LEITURA_GUARDADA);
     $("lei-pub2").value = ""; $("lei-remover-ok").checked = false;
     mensagem("msg-leitura", "success", "Proteção removida. Em cerca de 1 minuto os horários voltam a abrir sem senha.");
     atualizarConfigUI();
   } catch (err) {
-    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") senhaRecusada();
     mensagem("msg-leitura", "error", err instanceof ErroPublicacao ? (err.message === "Senha incorreta." ? "Senha de publicação incorreta." : err.message) : "Não foi possível gravar. Nada foi alterado.");
   } finally { ocupado(botao, false); }
 }
@@ -1879,6 +1936,9 @@ async function aoConfigurar(e) {
   mensagem("msg-config", "info", "Conferindo o token e salvando a configuração cifrada no repositório…");
   try {
     estado.config = await salvarConfiguracao({ token, repo, senha, senhaLeitura: $("cfg-senha-leitura").value, leitura: estado.leitura });
+    entrouNoAdmin(senha);
+    aplicarSessaoAdmin();
+    $("btn-admin-sair").hidden = false;
     for (const id of ["cfg-token", "cfg-senha", "cfg-senha2", "cfg-senha-leitura"]) $(id).value = "";
     mensagem("msg-config", "success", "Configuração salva. A partir de agora, para publicar basta a senha (em qualquer computador).");
     atualizarConfigUI();
@@ -1899,6 +1959,7 @@ async function aoTrocarSenha(e) {
   ocupado(botao, true, "Trocando…");
   try {
     estado.config = await trocarSenha(estado.config, atual, nova);
+    if (estado.senhaAdmin) estado.senhaAdmin = nova;
     for (const id of ["sen-atual", "sen-nova", "sen-nova2"]) $(id).value = "";
     mensagem("msg-senha", "success", "Senha trocada.");
     atualizarConfigUI();

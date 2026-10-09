@@ -517,6 +517,7 @@ body.com-modal { overflow: hidden; }
 .resumo-publicar { margin-top: 1rem; }
 .lista-resumo { margin: .75rem 0 0; padding-left: 1.1rem; font-size: .9rem; color: var(--slate-600); }
 .lista-resumo li + li { margin-top: .25rem; }
+.linha-topo-admin { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
 
 /* ---------- telas de toque (celular, tablet, celular deitado):
    todo alvo com pelo menos 44px, independentemente da largura */
