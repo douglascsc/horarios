@@ -478,7 +478,7 @@ body.com-modal { overflow: hidden; }
   .barra-movel button .icone { width: 1.25rem; height: 1.25rem; }
   .barra-movel button[aria-pressed="true"] { color: var(--brand-green-dark); background: var(--verde-claro); }
   .barra-movel button:disabled { opacity: .4; }
-  .barra-movel .contador { position: absolute; top: .2rem; right: calc(50% - 1.6rem); min-width: 1.1rem; height: 1.1rem; font-size: .7rem; }
+  .barra-movel .contador { position: absolute; top: .2rem; right: calc(50% - 1.6rem); min-width: 1.25rem; height: 1.25rem; font-size: var(--fs-min); }
   body.com-barra .rodape { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
   body.digitando .barra-movel, body.com-modal .barra-movel { display: none; }
 }
@@ -493,11 +493,37 @@ body.com-modal { overflow: hidden; }
 .portao form { margin-top: 1rem; }
 .rodape .botao-link { font-size: var(--fs-min); }
 
+/* ---------- passo a passo da importação */
+.etapas { padding: .75rem 1rem; position: sticky; top: .5rem; z-index: 20; }
+.etapas ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35rem; counter-reset: none; }
+.etapas button { width: 100%; display: flex; align-items: center; gap: .45rem; min-height: 44px; padding: .35rem .6rem; border-radius: .8rem; border: 1px solid var(--slate-200); background: #fff; color: var(--slate-600); font-weight: 700; font-size: .85rem; text-align: left; }
+.etapas .etapa-n { flex-shrink: 0; width: 1.6rem; height: 1.6rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--slate-100); color: var(--slate-600); font-size: var(--fs-min); }
+.etapas button.feito .etapa-n { background: var(--verde-claro); color: var(--brand-green-dark); }
+.etapas button[aria-current="step"] { border-color: var(--brand-green); background: #f7fbf6; color: var(--brand-green-dark); box-shadow: 0 0 0 3px rgba(43, 122, 64, .12); }
+.etapas button[aria-current="step"] .etapa-n { background: var(--brand-green); color: #fff; }
+.etapas p { margin-top: .4rem; }
+@media (max-width: 639px) {
+  .etapas { padding: .5rem; }
+  .etapas button { flex-direction: column; justify-content: center; gap: .15rem; text-align: center; font-size: var(--fs-min); padding: .35rem .2rem; }
+}
+.nav-etapas { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: 1rem; }
+.nav-etapas[hidden] { display: none; }
+.nav-etapas p { flex: 1 1 14rem; margin: 0; color: #92400e; }
+.nav-etapas p:empty { display: none; }
+.nav-etapas p.alerta { animation: piscar .3s ease 2; }
+@keyframes piscar { 50% { opacity: .3; } }
+#btn-etapa-proximo { margin-left: auto; }
+#btn-etapa-proximo.bloqueado { opacity: .6; }
+.resumo-publicar { margin-top: 1rem; }
+.lista-resumo { margin: .75rem 0 0; padding-left: 1.1rem; font-size: .9rem; color: var(--slate-600); }
+.lista-resumo li + li { margin-top: .25rem; }
+
 /* ---------- telas de toque (celular, tablet, celular deitado):
    todo alvo com pelo menos 44px, independentemente da largura */
 @media (pointer: coarse) {
   .filtro-chip, .segmentado button, .botao-link, .status-pill, .clear-search, .marca, .campo-ordenar { min-height: var(--alvo-toque); }
   #btn-admin, .modal-topo .botao-link { min-width: var(--alvo-toque); justify-content: center; }
+  #modal-fechar, .botao, .opcao-cancelar .botao { min-height: var(--alvo-toque); }
   .filtro-chip { padding: 0 1rem; }
   .botao-link { padding: .25rem .5rem; }
   .clear-search { min-width: var(--alvo-toque); justify-content: center; }

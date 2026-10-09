@@ -5,7 +5,7 @@
 // - Nada de fora do site é interceptado (a API do GitHub, usada para
 //   publicar, passa direto).
 // Ao mudar o código, troque VERSAO aqui e o ?v= do index.html/app.js.
-const VERSAO = "20261009m";
+const VERSAO = "20261009n";
 const CACHE = "horarios-" + VERSAO;
 const DADOS = "horarios-dados";
 const BASICO = [

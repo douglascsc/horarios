@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009m";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009m";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009n";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009n";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009m";
-import { gerarArquivoOffline } from "./offline.js?v=20261009m";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009m";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009m";
+} from "./publicar.js?v=20261009n";
+import { gerarArquivoOffline } from "./offline.js?v=20261009n";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009n";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009n";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -205,6 +205,7 @@ async function iniciar() {
   ligarModal();
   ligarAplicativo();
   ligarPortao();
+  ligarEtapas();
   $("form-leitura").addEventListener("submit", aoMudarLeitura);
   $("form-leitura-remover").addEventListener("submit", aoRemoverLeitura);
   const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
@@ -1122,6 +1123,7 @@ function mostrarAdmin() {
   garantirPeriodo(estado.periodoId).then(atualizarStatus);
   renderPeriodosAdmin();
   if (estado.importacao) renderDestino();
+  renderEtapas();
   window.scrollTo({ top: 0 });
 }
 
@@ -1190,7 +1192,92 @@ function tituloDoArquivo(nome) {
 }
 
 function esconderEtapas() {
-  for (const id of ["sec-leitura", "sec-revisao", "sec-destino", "sec-publicar"]) $(id).hidden = true;
+  irPasso(1, { forcar: true });
+}
+
+// ---------------------------------------------------------------- passo a passo da importação
+// 1 Planilha → 2 Revisão → 3 Destino → 4 Publicar; uma etapa por vez.
+const ROTULO_PASSO = { 1: "Planilha", 2: "Revisão", 3: "Destino", 4: "Publicar" };
+estado.passo = 1;
+function problemaDoPasso(n) {
+  const imp = estado.importacao;
+  if (!imp) return "Envie uma planilha primeiro.";
+  if (n >= 2 && !imp.dados.aulas.length) return "Nenhuma aula pôde ser lida: corrija a planilha e envie de novo.";
+  if (n >= 3 && imp.pendencias && imp.pendencias.length) return imp.pendencias.length === 1 ? "Decida a aula com início fora da grade antes de seguir." : `Decida as ${imp.pendencias.length} aulas com início fora da grade antes de seguir.`;
+  if (n >= 4) {
+    renderResumoDestino();
+    if (estado.problemaDestino) return estado.problemaDestino;
+    const sai = periodoQueSai();
+    if (sai && !$("dest-confirmar").checked) return `Marque a confirmação de que ${sai.nome} será substituído.`;
+  }
+  return "";
+}
+function irPasso(n, { forcar = false } = {}) {
+  // para avançar, as etapas anteriores precisam estar resolvidas
+  let aviso = "";
+  if (!forcar) for (let k = 2; k <= n; k++) { const prob = problemaDoPasso(k); if (prob) { aviso = prob; n = k - 1; break; } }
+  n = Math.max(1, Math.min(4, n));
+  const mudou = n !== estado.passo;
+  estado.passo = n;
+  renderEtapas(aviso);
+  if (mudou) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const alvo = { 1: "sec-envio", 2: "sec-revisao", 3: "sec-destino", 4: "sec-publicar" }[n];
+    const titulo = $(alvo).querySelector("h2, h3");
+    if (titulo) { titulo.setAttribute("tabindex", "-1"); titulo.focus({ preventScroll: true }); }
+  }
+}
+function renderEtapas(aviso = "") {
+  const imp = estado.importacao, n = imp ? estado.passo : 1;
+  $("etapas").hidden = !imp;
+  $("nav-etapas").hidden = !imp || n === 1;
+  $("sec-envio").hidden = !!imp && n !== 1;
+  $("sec-periodos").hidden = !!imp && n !== 1;
+  $("sec-config").hidden = !!imp && n > 1 && !!estado.config; // durante a importação, só se ainda faltar configurar
+  $("sec-revisao").hidden = n !== 2;
+  $("sec-leitura").hidden = n !== 2;
+  $("sec-destino").hidden = n !== 3;
+  $("sec-publicar").hidden = n !== 4;
+  if (!imp) return;
+  $("etapas-arquivo").textContent = `Planilha: ${imp.dados.arquivo || ""} · ${plural(imp.dados.aulas.length, "aula", "aulas")}`;
+  for (const b of $("etapas").querySelectorAll("button[data-passo]")) {
+    const k = Number(b.dataset.passo);
+    b.classList.toggle("feito", k < n);
+    if (k === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+  }
+  $("btn-etapa-voltar").hidden = n <= 1;
+  $("btn-etapa-voltar").querySelector("span").textContent = n === 2 ? "Outra planilha" : `Voltar: ${ROTULO_PASSO[n - 1]}`;
+  $("btn-etapa-proximo").hidden = n >= 4;
+  $("btn-etapa-proximo").querySelector("span").textContent = n < 4 ? `Próximo: ${ROTULO_PASSO[n + 1]}` : "";
+  const prob = n < 4 ? problemaDoPasso(n + 1) : "";
+  $("btn-etapa-proximo").setAttribute("aria-disabled", String(!!prob));
+  $("btn-etapa-proximo").classList.toggle("bloqueado", !!prob);
+  $("msg-etapa").textContent = aviso || prob;
+  if (n === 4) renderResumoPublicar();
+}
+function renderResumoPublicar() {
+  const imp = estado.importacao;
+  const c = contarNiveis(imp.avisos);
+  const destino = $("dest-resumo").cloneNode(true);
+  destino.removeAttribute("id");
+  $("resumo-publicar").replaceChildren(
+    destino,
+    el("ul", { class: "lista-resumo" },
+      el("li", null, el("strong", { text: "Revisão: " }), `${plural(c.erro, "erro", "erros")}, ${plural(c.divergencia, "divergência", "divergências")}, ${plural(c.duvida, "dúvida", "dúvidas")}`),
+      el("li", null, el("strong", { text: "Intervalos diferenciados: " }), (() => { const d = imp.opcoes.diaEspecial === undefined ? DIA_ESPECIAL_PADRAO : imp.opcoes.diaEspecial; return d ? `${NOME_DIA[d]} (${MOTIVO_DIA_ESPECIAL})` : "nenhum dia"; })()),
+      $("dest-recado").value.trim() ? el("li", null, el("strong", { text: "Recado: " }), $("dest-recado").value.trim()) : null,
+      $("dest-inicio-aulas").value && $("dest-fim-aulas").value ? el("li", null, el("strong", { text: "Aulas: " }), `de ${dataBr($("dest-inicio-aulas").value + "T12:00")} a ${dataBr($("dest-fim-aulas").value + "T12:00")}`) : null));
+}
+function ligarEtapas() {
+  $("etapas").addEventListener("click", (e) => { const b = e.target.closest("button[data-passo]"); if (b) irPasso(Number(b.dataset.passo)); });
+  $("btn-etapa-voltar").addEventListener("click", () => irPasso(estado.passo - 1, { forcar: true }));
+  $("btn-etapa-proximo").addEventListener("click", () => {
+    const prob = problemaDoPasso(estado.passo + 1);
+    if (prob) { $("msg-etapa").textContent = prob; $("msg-etapa").classList.add("alerta"); setTimeout(() => $("msg-etapa").classList.remove("alerta"), 600); return; }
+    irPasso(estado.passo + 1);
+  });
+  // o "Próximo" acompanha as decisões e o destino
+  for (const ev of ["change", "input"]) $("form-destino").addEventListener(ev, () => { if (estado.importacao) renderEtapas(); });
 }
 
 function cancelarImportacao() {
@@ -1222,17 +1309,13 @@ async function processarArquivo(arquivo) {
     $("pub-titulo").value = atual && atual.titulo ? atual.titulo : titulo;
     prepararDestino(r);
     mensagem("msg-envio", r.dados.aulas.length ? "success" : "error",
-      r.dados.aulas.length ? `"${arquivo.name}" lida: ${plural(r.dados.aulas.length, "aula", "aulas")} encontradas. Revise abaixo; nada foi publicado ainda.` : `"${arquivo.name}" foi aberta, mas nenhuma aula pôde ser lida. Veja a revisão abaixo.`);
+      r.dados.aulas.length ? `"${arquivo.name}" lida: ${plural(r.dados.aulas.length, "aula", "aulas")} encontradas. Nada foi publicado ainda.` : `"${arquivo.name}" foi aberta, mas nenhuma aula pôde ser lida. Veja a revisão abaixo.`);
     renderLeitura(r, arquivo.name);
     renderRevisao(r);
     renderPendencias();
-    $("sec-leitura").hidden = false;
-    $("sec-revisao").hidden = false;
-    $("sec-destino").hidden = !r.dados.aulas.length;
-    $("sec-publicar").hidden = !r.dados.aulas.length;
     renderDestino();
     renderPublicarConfig();
-    $("sec-leitura").scrollIntoView({ behavior: "smooth", block: "start" });
+    irPasso(2, { forcar: true });
   } catch (e) {
     console.error(e);
     mensagem("msg-envio", "error", e instanceof ErroPlanilha ? e.message : "Não foi possível ler a planilha. Confira se o arquivo é um .xlsx válido.");
@@ -1304,6 +1387,7 @@ function decidir(chave, decisao) {
   renderPendencias();
   renderPublicarConfig();
   renderResumoDestino();
+  renderEtapas();
 }
 function renderPendencias() {
   const imp = estado.importacao;
@@ -1422,11 +1506,13 @@ function renderResumoDestino() {
   const outros = ps.filter((p) => !sai || p.id !== sai.id).filter((p) => idDoPeriodo(p.nome) !== idDoPeriodo(nome) || (sai && p.id === sai.id));
   const box = $("dest-resumo");
   let problema = "";
+  estado.problemaDestino = "";
   if (!idDoPeriodo(nome)) problema = "Informe o nome do período letivo (ex.: 2027/1).";
   else if (modoDestino() === "novo" && ps.some((p) => idDoPeriodo(p.nome) === idDoPeriodo(nome))) problema = `Já existe o período "${nome}". Para atualizá-lo, escolha "Substituir os horários de um período existente".`;
   else if (sai && ps.some((p) => p.id !== sai.id && idDoPeriodo(p.nome) === idDoPeriodo(nome))) problema = `Já existe outro período chamado "${nome}". Use outro nome.`;
   else if (modoDestino() === "novo" && ps.length >= MAX_PERIODOS && !sai) problema = "Escolha qual período será substituído pelo novo.";
   else if (estado.importacao.pendencias && estado.importacao.pendencias.length) problema = `Falta decidir ${plural(estado.importacao.pendencias.length, "aula com início fora da grade", "aulas com início fora da grade")} (etapa 2, Revisão).`;
+  estado.problemaDestino = problema;
   if (problema) {
     box.className = "notice notice-error";
     box.replaceChildren(icone("circle-alert"), el("span", { text: problema }));
@@ -1638,7 +1724,7 @@ async function aoPublicar(e) {
   const c = contarNiveis(estado.importacao.avisos);
   if (c.erro + c.divergencia > 0 && !$("pub-confirmar").checked) { mensagem("msg-publicar", "warn", "Marque a confirmação de que revisou os avisos antes de publicar."); return; }
   const sai = periodoQueSai();
-  if (sai && !$("dest-confirmar").checked) { mensagem("msg-publicar", "warn", `Confirme, na etapa 3, que os horários de ${sai.nome} serão substituídos.`); $("sec-destino").scrollIntoView({ behavior: "smooth" }); return; }
+  if (sai && !$("dest-confirmar").checked) { mensagem("msg-publicar", "warn", `Confirme, na etapa 3, que os horários de ${sai.nome} serão substituídos.`); irPasso(3, { forcar: true }); return; }
   const botao = $("btn-publicar");
   ocupado(botao, true, "Publicando…");
   mensagem("msg-publicar", "info", "Conferindo a senha e enviando os horários…");

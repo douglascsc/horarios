@@ -25,22 +25,29 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - **Mudou recentemente**: depois de uma atualização do mesmo período, as aulas novas ou alteradas ganham um selo ("antes: professor, sala") e as que saíram aparecem no quadro, por 14 dias. Um aviso no topo permite ver só as mudanças. Se mais da metade do horário mudou, é considerado um horário novo e nada é marcado.
 - **Aplicativo e sem internet**: pode ser instalado na tela inicial ("Instalar app" ou "Adicionar à tela inicial"). Depois do primeiro acesso, funciona sem internet com os últimos horários guardados no aparelho, e avisa quando está assim.
 - **Versão offline**: o botão "Baixar versão offline" (na consulta e na área do administrador) gera **um único arquivo .html** (cerca de 350 KB) com o visual, o código e os horários de todos os períodos publicados. Ele abre com dois cliques, sem internet: no computador, num pendrive ou na pasta do Google Drive para computador. É só para consulta (busca, filtros, quadros, impressão e agenda), mostra a data em que foi gerado e precisa ser baixado de novo quando o horário mudar. O arquivo **não contém o endereço do site**, para poder circular sem divulgar o link. Na área do administrador também há "Versão offline desta planilha (sem publicar)", que gera o arquivo direto da planilha enviada, sem colocar nada online.
+- **Recado do período**: a coordenação pode deixar um aviso curto em destaque no topo (ex.: "Horário provisório até 20/10"). Ele é definido ao publicar ou em "Editar".
+- **Comparar períodos**: com dois ou mais períodos, o botão "Comparar" mostra, com os filtros atuais, o que só existe num, o que só existe no outro e o que mudou de professor, sala ou término (ex.: o horário de um professor em 2026/2 × 2027/1).
+- **Excel**: "Excel" baixa um `.xlsx` só com as aulas filtradas (dia, horário, turma, curso, disciplina, professor, sala e turno), pronto para filtrar e somar.
+- **Barra fixa no celular**: atalhos sempre à mão para Filtros (com o número de filtros ativos), Agora, Hoje e Topo. Ela some enquanto se digita.
 - **Impressão**: um quadro por página, ajustado à folha A4 deitada, com o título, o período e a data. O botão "Imprimir" de um quadro imprime só ele; o da barra imprime todos.
 
 **Área do administrador** (`…/#admin`)
-1. **Envio** da planilha `.xlsx` (por clique ou arrastando o arquivo).
-2. **Leitura**: mostra cada aba e como ela foi usada, além dos cabeçalhos reconhecidos (ex.: `Dia Semana → Dia`) e das colunas ignoradas.
-3. **Revisão**: avisos classificados como *Erro*, *Divergência*, *Dúvida* e *Informação*, com a aba e a linha de cada um (veja abaixo). Aulas com **início fora da grade** pedem uma decisão: **manter o horário** (autorizar) ou **colocar na grade**. Sem essa decisão, não dá para publicar.
-4. **Destino**:
+
+Ao enviar uma planilha, a área vira um **assistente em 4 passos**, com uma barra de etapas no topo e os botões Voltar/Próximo. O site só deixa avançar quando o passo está resolvido e diz o que falta.
+
+1. **Planilha**: envio do `.xlsx` (por clique ou arrastando o arquivo).
+2. **Revisão**: avisos classificados como *Erro*, *Divergência*, *Dúvida* e *Informação*, com a aba e a linha de cada um (veja abaixo). Aulas com **início fora da grade** pedem uma decisão: **manter o horário** (autorizar) ou **colocar na grade**; sem ela, não dá para seguir. Em "Detalhes da leitura" aparecem cada aba e como ela foi usada, os cabeçalhos reconhecidos (ex.: `Dia Semana → Dia`) e as colunas ignoradas.
+3. **Destino**:
    - **A. Substituir** os horários de um período existente. Você escolhe qual, e os outros não mudam.
    - **B. Adicionar** um novo período (ex.: 2027/1). Se os 3 espaços já estiverem ocupados, é preciso escolher qual deles sai.
    - **C. Cancelar**: nada é alterado.
 
-   Antes de uma substituição, o site mostra qual período será afetado e pede confirmação. Também mostra **o que muda** em relação à versão publicada: aulas novas, alteradas e que saem.
-5. **Prévia** do site com os novos dados, antes de publicar, e **PDF de conferência**: uma capa com o resumo da revisão (destino, comparação, intervalos e pontos a conferir) e o quadro de todas as turmas, marcado "não publicado", para enviar à coordenação. Também é possível informar o primeiro e o último dia de aula, usados no botão "Agenda".
-6. **Publicação com senha**. Se houver erros ou divergências, é preciso confirmar que foram revisados.
-7. **Períodos publicados**: ver, tornar atual, editar (nome, observação como "válido a partir de 15/10" e datas das aulas) ou remover. Cada ação pede a senha. Também é possível baixar a versão offline de tudo o que está publicado.
-8. **Publicar ou não**: o administrador escolhe, a cada planilha, se publica online, se só gera a **versão offline desta planilha** (nada vai para o ar), ou as duas coisas.
+   Antes de uma substituição, o site mostra qual período será afetado e pede confirmação; sem ela, não passa para o passo 4. Também mostra **o que muda** em relação à versão publicada (aulas novas, alteradas e que saem). Aqui se informam o primeiro e o último dia de aula (usados no botão "Agenda"), o dia dos intervalos diferenciados e o recado do período.
+4. **Publicar**: um resumo do que vai acontecer, a **prévia** do site, o **PDF de conferência** (capa com o resumo da revisão e o quadro de todas as turmas, marcado "não publicado"), a **versão offline desta planilha** (sem colocar nada no ar) e a **publicação com senha**. Se houver erros ou divergências, é preciso confirmar que foram revisados.
+
+Fora do assistente:
+- **Períodos publicados**: ver, tornar atual, editar (nome, observação, recado e datas das aulas) ou remover. Cada ação pede a senha. Também é possível baixar a versão offline de tudo o que está publicado.
+- **Configuração**: token, senha de publicação e **senha de leitura** (veja abaixo).
 
 ## Como a planilha é interpretada
 
@@ -120,14 +127,16 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 - `js/leitor-xlsx.js`: leitor próprio de `.xlsx` (zip + XML).
 - `js/interpretar.js`: interpretação e revisão. É uma função pura, que também roda no Node.
 - `js/publicar.js`: cifra o token e grava os arquivos pela API do GitHub.
-- `js/recursos.js`: arquivo de agenda (.ics) e comparação entre versões.
+- `js/recursos.js`: arquivo de agenda (.ics), planilha do Excel exportada e comparação entre versões.
+- `js/leitura.js`: senha de leitura (cifra e decifra os arquivos de horários).
+- `dados/leitura.json`: só existe com a senha de leitura ligada; guarda a chave dos horários, trancada com essa senha.
 - `js/offline.js`: monta a versão offline (cada módulo vira uma função dentro do arquivo e os dados vão embutidos, porque o navegador não carrega módulos nem `.json` em páginas abertas direto do computador).
 - `manifest.webmanifest` e `sw.js`: aplicativo instalável e funcionamento sem internet.
 - `js/app.js`: interface. `css/estilo.css`: visual.
 
 **Publicar** é gravar esses arquivos neste repositório pela API do GitHub. Cada ação (adicionar, substituir, editar, remover) vira **um único commit**: ou tudo é gravado, ou nada muda. Antes de gravar, o índice é lido direto do repositório, para não desfazer uma publicação recente. O GitHub Pages atualiza o site em cerca de 1 minuto, e o histórico do Git guarda todas as versões, o que permite voltar a uma anterior.
 
-**Versão dos arquivos:** `index.html`, `js/app.js`, `js/recursos.js` e `sw.js` usam a mesma versão (`?v=AAAAMMDD…` / `VERSAO`). Ao mudar o código, troque esse número em todos eles, para os navegadores não juntarem código novo com código antigo guardado em cache.
+**Versão dos arquivos:** `index.html`, `js/app.js`, `js/recursos.js`, `js/publicar.js` e `sw.js` usam a mesma versão (`?v=AAAAMMDD…` / `VERSAO`). Ao mudar o código, troque esse número em todos eles, para os navegadores não juntarem código novo com código antigo guardado em cache.
 
 **Consumo:** quem consulta só baixa os arquivos do período que abriu, uma vez. Os destaques "agora" e "começa em" são recalculados no próprio navegador e não fazem requisições. A API do GitHub só é usada quando o administrador publica.
 
@@ -147,6 +156,15 @@ O GitHub só aceita gravações com um token. Para que o administrador precise a
 2. **Criar o token**: *GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token*. Em *Repository access*, escolha *Only select repositories* → este repositório. Em *Permissions*, dê *Contents: Read and write*.
 3. Abra `…/#admin` → **Configuração da publicação**, cole o token, confirme o repositório (`douglascsc/horarios`) e defina a senha.
 4. Pronto: envie a planilha, revise, veja a prévia e publique com a senha. A senha pode ser trocada na mesma tela.
+
+## Senha de leitura (opcional)
+
+Por padrão, quem tem o link vê os horários. Em **Configuração → Senha de leitura**, o administrador pode exigir uma senha para **ver** o site:
+
+- Os arquivos de horários passam a ser gravados **cifrados** (AES-GCM 256) com uma chave aleatória. A chave fica em `dados/leitura.json`, trancada com a senha de leitura (PBKDF2-SHA256, 310 mil iterações), e também trancada com a senha de publicação, para o administrador continuar publicando sem digitá-la.
+- Quem abre o site vê uma tela pedindo a senha. Com "Lembrar neste aparelho", ela não é pedida de novo; "Bloquear", no rodapé, esquece.
+- Ao trocar a senha, dá para **gerar chave nova**: os aparelhos que já tinham entrado precisam da senha nova. A proteção pode ser removida a qualquer momento (os arquivos voltam a ser gravados abertos).
+- **Limites:** é uma proteção de site estático. O arquivo cifrado é público, então alguém pode tentar adivinhar a senha fora do site; use uma senha que não seja óbvia e troque-a, gerando chave nova, se ela vazar. A **versão offline** baixada por quem já entrou **não pede senha**: ela leva os horários abertos dentro do arquivo.
 
 ## Segurança da importação
 

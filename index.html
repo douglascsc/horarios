@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009m"></script>
-  <script src="js/icones.js?v=20261009m"></script>
+  <script src="js/protecao.js?v=20261009n"></script>
+  <script src="js/icones.js?v=20261009n"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009m">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009n">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,13 +23,13 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="modulepreload" href="js/interpretar.js?v=20261009m">
-  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009m">
-  <link rel="modulepreload" href="js/publicar.js?v=20261009m">
-  <link rel="modulepreload" href="js/recursos.js?v=20261009m">
-  <link rel="modulepreload" href="js/offline.js?v=20261009m">
-  <link rel="modulepreload" href="js/leitura.js?v=20261009m">
-  <script type="module" src="js/app.js?v=20261009m"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009n">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009n">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009n">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009n">
+  <link rel="modulepreload" href="js/offline.js?v=20261009n">
+  <link rel="modulepreload" href="js/leitura.js?v=20261009n">
+  <script type="module" src="js/app.js?v=20261009n"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -160,7 +160,18 @@
     <!-- ===================== ADMINISTRADOR ===================== -->
     <section id="view-admin" hidden>
      <div class="passos">
-      <section class="hero-panel glass-surface reveal">
+      <nav id="etapas" class="etapas glass-surface" aria-labelledby="etapas-titulo" hidden>
+       <h2 id="etapas-titulo" class="sr-only">Importar planilha: etapas</h2>
+       <ol>
+        <li><button type="button" data-passo="1"><span class="etapa-n">1</span><span>Planilha</span></button></li>
+        <li><button type="button" data-passo="2"><span class="etapa-n">2</span><span>Revisão</span></button></li>
+        <li><button type="button" data-passo="3"><span class="etapa-n">3</span><span>Destino</span></button></li>
+        <li><button type="button" data-passo="4"><span class="etapa-n">4</span><span>Publicar</span></button></li>
+       </ol>
+       <p id="etapas-arquivo" class="texto-pequeno"></p>
+      </nav>
+
+      <section id="sec-envio" class="hero-panel glass-surface reveal">
        <button id="btn-admin-voltar" class="botao-link" type="button"><i data-lucide="arrow-left"></i> Voltar à consulta</button>
        <span class="selo" style="margin-top:.5rem">Área do administrador</span>
        <h2 class="titulo-secao">Atualizar os horários</h2>
@@ -176,7 +187,7 @@
        <p class="texto-pequeno" style="margin-top:.75rem">Só os valores das células são lidos: fórmulas e macros nunca são executadas.</p>
       </section>
 
-      <section class="glass-surface reveal">
+      <section id="sec-periodos" class="glass-surface reveal">
        <div class="rotulo-barra">Períodos letivos publicados</div>
        <h3 class="titulo-card">Períodos no site</h3>
        <p class="subtitulo">Até 3 períodos podem ficar disponíveis ao mesmo tempo (ex.: o semestre atual e o próximo). O marcado como <strong>atual</strong> é o que abre primeiro. <span id="periodos-vagas"></span></p>
@@ -187,18 +198,8 @@
        <div id="lista-periodos" class="lista-periodos"></div>
       </section>
 
-      <section id="sec-leitura" class="glass-surface reveal" hidden>
-       <div class="rotulo-barra">1. Leitura</div>
-       <h3 class="titulo-card" id="leitura-titulo">Planilha lida</h3>
-       <div id="leitura-estatisticas" class="estatisticas"></div>
-       <table class="tabela-abas">
-        <thead><tr><th>Aba</th><th>Como foi usada</th><th>Registros</th><th>Cabeçalhos encontrados</th></tr></thead>
-        <tbody id="leitura-abas"></tbody>
-       </table>
-      </section>
-
       <section id="sec-revisao" class="glass-surface reveal" hidden>
-       <div class="rotulo-barra">2. Revisão</div>
+       <div class="rotulo-barra">Passo 2 de 4 · Revisão</div>
        <h3 class="titulo-card">Inconsistências, divergências e dúvidas</h3>
        <p class="subtitulo">Confira os pontos abaixo. Corrija na planilha e envie de novo, ou publique assim mesmo se estiver tudo certo.</p>
        <div id="revisao-resumo" style="margin-top:1rem"></div>
@@ -207,8 +208,18 @@
        <div id="revisao-lista"></div>
       </section>
 
+      <section id="sec-leitura" class="glass-surface reveal" hidden>
+       <div class="rotulo-barra">Detalhes da leitura</div>
+       <h3 class="titulo-card">Como a planilha foi lida: <span id="leitura-titulo"></span></h3>
+       <div id="leitura-estatisticas" class="estatisticas"></div>
+       <table class="tabela-abas">
+        <thead><tr><th>Aba</th><th>Como foi usada</th><th>Registros</th><th>Cabeçalhos encontrados</th></tr></thead>
+        <tbody id="leitura-abas"></tbody>
+       </table>
+      </section>
+
       <section id="sec-destino" class="glass-surface reveal" hidden>
-       <div class="rotulo-barra">3. Destino</div>
+       <div class="rotulo-barra">Passo 3 de 4 · Destino</div>
        <h3 class="titulo-card">Onde estes horários vão entrar?</h3>
        <p id="dest-vagas" class="subtitulo"></p>
        <form id="form-destino" autocomplete="off">
@@ -269,8 +280,9 @@
       </section>
 
       <section id="sec-publicar" class="glass-surface reveal" hidden>
-       <div class="rotulo-barra">4. Prévia e publicação</div>
+       <div class="rotulo-barra">Passo 4 de 4 · Conferir e publicar</div>
        <h3 class="titulo-card">Conferir e publicar</h3>
+       <div id="resumo-publicar" class="resumo-publicar"></div>
        <div class="linha-acoes">
         <button id="btn-previa" class="botao botao-suave" type="button"><i data-lucide="eye"></i> Ver prévia do site</button>
         <button id="btn-pdf-conferencia" class="botao botao-secundario" type="button"><i data-lucide="printer"></i> PDF de conferência</button>
@@ -297,7 +309,13 @@
        <div id="msg-publicar" class="notice" style="margin-top:1rem" hidden role="status"></div>
       </section>
 
-      <section class="glass-surface reveal">
+      <nav id="nav-etapas" class="nav-etapas glass-surface" aria-label="Navegação entre as etapas" hidden>
+       <button id="btn-etapa-voltar" class="botao botao-secundario" type="button"><i data-lucide="arrow-left"></i> <span>Voltar</span></button>
+       <p id="msg-etapa" class="texto-pequeno" role="status"></p>
+       <button id="btn-etapa-proximo" class="botao botao-primario" type="button"><span>Próximo</span> <i data-lucide="chevron-right"></i></button>
+      </nav>
+
+      <section id="sec-config" class="glass-surface reveal">
        <details id="detalhes-config" class="detalhes-config">
         <summary><i data-lucide="settings"></i> Configuração da publicação <i data-lucide="chevron-down" class="chev"></i></summary>
         <p id="config-status" class="subtitulo"></p>
