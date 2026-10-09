@@ -174,8 +174,14 @@ function ligarConsulta() {
   for (const campo of ["turma", "professor", "sala", "turno"]) {
     $("filtro-" + campo).addEventListener("change", (e) => {
       estado.filtros[campo] = e.target.value;
-      // escolher uma turma/professor/sala já agrupa por ela
-      if (e.target.value && ["turma", "professor", "sala"].includes(campo)) estado.agrupar = campo;
+      // escolher uma turma/professor/sala já agrupa por ela e volta para o
+      // quadro da Semana; a sala mostra também todos os dias
+      if (["turma", "professor", "sala"].includes(campo)) {
+        if (e.target.value) estado.agrupar = campo;
+        estado.exibir = "grade";
+        estado.filtros.agora = "";
+        if (campo === "sala") estado.filtros.dia = "";
+      }
       gravarEndereco(); renderConsulta();
     });
   }
@@ -320,7 +326,7 @@ function renderConsulta() {
   // volta para o agrupamento por turma
   const cursosEl = $("filtro-cursos");
   if (!idx.cursos.includes(f.curso)) f.curso = "";
-  const escolherCurso = (c) => { f.curso = c; f.turma = ""; estado.agrupar = "turma"; gravarEndereco(); renderConsulta(); };
+  const escolherCurso = (c) => { f.curso = c; f.turma = ""; f.agora = ""; estado.agrupar = "turma"; estado.exibir = "grade"; gravarEndereco(); renderConsulta(); };
   cursosEl.replaceChildren(...(idx.cursos.length > 1 ? [
     chip("Todos os cursos", !f.curso, () => escolherCurso("")),
     ...idx.cursos.map((c) => chip(c, f.curso === c, () => escolherCurso(f.curso === c ? "" : c), idx.aulas.filter((a) => a.curso === c).length)),
