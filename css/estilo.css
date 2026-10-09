@@ -412,6 +412,8 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
 
 /* ---------- sem internet / mudanças */
 .barra-offline { position: sticky; top: 0; z-index: 45; background: #f59e0b; color: #451a03; font-size: .85rem; font-weight: 600; }
+.barra-offline.arquivo-offline { position: static; background: #e6f3f2; color: #0e5c59; }
+.barra-offline.arquivo-offline a { color: #0e5c59; font-weight: 700; }
 .barra-offline .container { padding-top: .5rem; padding-bottom: .5rem; text-align: center; }
 .aviso-mudancas { margin-top: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .6rem; border-radius: .9rem; padding: .45rem .8rem; background: #fff8e6; border: 1px solid #f5d48a; color: #7c4a03; font-size: .85rem; }
 .aviso-mudancas .icone { color: #d97706; }

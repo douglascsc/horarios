@@ -24,6 +24,7 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - **Agenda**: o botão "Agenda" de cada quadro baixa um arquivo `.ics` com as aulas repetindo toda semana, para abrir no celular ou importar no Google Agenda. Usa as datas do período informadas pela coordenação, que podem ser ajustadas antes de baixar. Aulas EaD ficam de fora.
 - **Mudou recentemente**: depois de uma atualização do mesmo período, as aulas novas ou alteradas ganham um selo ("antes: professor, sala") e as que saíram aparecem no quadro, por 14 dias. Um aviso no topo permite ver só as mudanças. Se mais da metade do horário mudou, é considerado um horário novo e nada é marcado.
 - **Aplicativo e sem internet**: pode ser instalado na tela inicial ("Instalar app" ou "Adicionar à tela inicial"). Depois do primeiro acesso, funciona sem internet com os últimos horários guardados no aparelho, e avisa quando está assim.
+- **Versão offline**: o botão "Baixar versão offline" gera **um único arquivo .html** (cerca de 350 KB) com o visual, o código e os horários de todos os períodos publicados. Ele abre com dois cliques, sem internet: no computador, num pendrive ou na pasta do Google Drive para computador. É só para consulta (busca, filtros, quadros, impressão e agenda), mostra a data em que foi gerado e precisa ser baixado de novo quando o horário mudar.
 - **Impressão**: um quadro por página, ajustado à folha A4 deitada, com o título, o período e a data. O botão "Imprimir" de um quadro imprime só ele; o da barra imprime todos.
 
 **Área do administrador** (`…/#admin`)
@@ -119,6 +120,7 @@ Site **estático** (HTML, CSS e JavaScript, sem framework nem bibliotecas extern
 - `js/interpretar.js`: interpretação e revisão. É uma função pura, que também roda no Node.
 - `js/publicar.js`: cifra o token e grava os arquivos pela API do GitHub.
 - `js/recursos.js`: arquivo de agenda (.ics) e comparação entre versões.
+- `js/offline.js`: monta a versão offline (cada módulo vira uma função dentro do arquivo e os dados vão embutidos, porque o navegador não carrega módulos nem `.json` em páginas abertas direto do computador).
 - `manifest.webmanifest` e `sw.js`: aplicativo instalável e funcionamento sem internet.
 - `js/app.js`: interface. `css/estilo.css`: visual.
 

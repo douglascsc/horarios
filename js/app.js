@@ -3,13 +3,14 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009c";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009c";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009d";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009d";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009c";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009c";
+} from "./publicar.js?v=20261009d";
+import { gerarArquivoOffline } from "./offline.js?v=20261009d";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009d";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -37,6 +38,14 @@ const guardar = {
 };
 const FILTROS_VAZIOS = () => ({ q: "", curso: "", turma: "", professor: "", sala: "", turno: "", dia: "", agora: "", mudou: "" });
 
+// Versão offline (arquivo único baixado): dados embutidos na página
+const OFFLINE = (() => {
+  const e = document.getElementById("dados-offline");
+  if (!e) return null;
+  try { return JSON.parse(e.textContent); } catch { return null; }
+})();
+const VERSAO = (() => { try { return new URL(import.meta.url).searchParams.get("v") || ""; } catch { return ""; } })();
+
 // ---------------------------------------------------------------- estado
 const estado = {
   indice: null,          // dados/periodos.json  { padrao, periodos: [...] }
@@ -58,7 +67,7 @@ const dadosAtivos = () => (estado.previa && estado.importacao ? dadosDaImportaca
 const CHAVES_URL = { q: "q", curso: "curso", turma: "turma", professor: "prof", sala: "sala", turno: "turno", dia: "dia", agora: "agora", mudou: "mudou" };
 function lerEndereco() {
   const h = location.hash.replace(/^#\/?/, "");
-  if (h === "admin" || h.startsWith("admin")) return { admin: true };
+  if (!OFFLINE && (h === "admin" || h.startsWith("admin"))) return { admin: true };
   const p = new URLSearchParams(h);
   for (const [campo, chave] of Object.entries(CHAVES_URL)) estado.filtros[campo] = p.get(chave) || "";
   estado.agrupar = ["turma", "professor", "sala", "dia"].includes(p.get("agrupar")) ? p.get("agrupar") : "turma";
@@ -90,6 +99,7 @@ function periodoPadrao() {
 
 // ---------------------------------------------------------------- carregar
 async function carregarJson(caminho) {
+  if (OFFLINE) return OFFLINE.arquivos[caminho] ?? null;
   try {
     const r = await fetch(`${caminho}?v=${Date.now()}`, { cache: "no-store" });
     if (!r.ok) return null;
@@ -160,6 +170,16 @@ function atualizarStatus() {
 // Instalação (ícone na tela inicial) e funcionamento sem internet (sw.js).
 let pedidoInstalar = null;
 function ligarAplicativo() {
+  if (OFFLINE) {
+    $("btn-admin").hidden = true;
+    $("btn-offline").hidden = true;
+    $("barra-offline").hidden = false;
+    $("barra-offline").classList.add("arquivo-offline");
+    $("barra-offline-texto").replaceChildren(`Versão offline, gerada em ${new Date(OFFLINE.geradoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}: pode estar desatualizada. `,
+      OFFLINE.urlSite ? el("a", { href: OFFLINE.urlSite, target: "_blank", rel: "noopener", text: "Abrir a versão atualizada" }) : "");
+    return;
+  }
+  $("btn-offline").addEventListener("click", baixarVersaoOffline);
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     navigator.serviceWorker.register("sw.js").catch(() => { /* sem modo offline */ });
   }
@@ -185,6 +205,32 @@ function ligarAplicativo() {
   situacao();
 }
 
+async function baixarVersaoOffline() {
+  const botao = $("btn-offline");
+  const span = botao.querySelector("span");
+  const original = span.textContent;
+  botao.disabled = true;
+  span.textContent = "Preparando…";
+  try {
+    const arquivos = { [ARQUIVO_INDICE]: estado.indice };
+    for (const p of periodos()) {
+      await garantirPeriodo(p.id);
+      const d = estado.dadosPorPeriodo.get(p.id);
+      if (!d) throw new Error(`Não foi possível carregar o período ${p.nome}.`);
+      arquivos[p.arquivo] = d;
+    }
+    const { html } = await gerarArquivoOffline({ versao: VERSAO, arquivos, urlSite: location.origin + location.pathname });
+    const hoje = isoData(new Date());
+    baixarArquivo(new Blob([html], { type: "text/html;charset=utf-8" }), `horarios-offline-${hoje}.html`);
+    span.textContent = "Baixado!";
+    setTimeout(() => { span.textContent = original; }, 2500);
+  } catch (e) {
+    console.error(e);
+    span.textContent = "Não foi possível gerar (sem internet?)";
+    setTimeout(() => { span.textContent = original; }, 4000);
+  } finally { botao.disabled = false; }
+}
+
 // ================================================================= JANELA (modal)
 function ligarModal() {
   $("modal-fechar").addEventListener("click", fecharModal);
@@ -195,7 +241,7 @@ let focoAntesModal = null;
 function abrirModal(titulo, ...conteudo) {
   focoAntesModal = document.activeElement;
   $("modal-titulo").textContent = titulo;
-  $("modal-corpo").replaceChildren(...conteudo);
+  $("modal-corpo").replaceChildren(...conteudo.filter((x) => x !== null && x !== undefined && x !== false));
   $("modal").hidden = false;
   document.body.classList.add("com-modal");
   setTimeout(() => ($("modal-corpo").querySelector("button, input, a") || $("modal-fechar")).focus(), 0);
@@ -573,6 +619,7 @@ function renderResultados() {
   const grupos = agrupar(aulas, idx);
   const LIMITE = 60;
   $("btn-imprimir-todos").hidden = false;
+  $("btn-offline").hidden = !!OFFLINE || estado.previa;
   $("btn-imprimir-todos-texto").textContent = grupos.length > 1 ? `Imprimir os ${Math.min(grupos.length, LIMITE)} quadros (um por página)` : "Imprimir";
   const frag = grupos.slice(0, LIMITE).map((g) => renderGrupo(g, idx, dados));
   if (grupos.length > LIMITE) frag.push(el("p", { class: "notice notice-info", text: `Mostrando ${LIMITE} de ${grupos.length} grupos. Use a busca ou os filtros para encontrar os demais.` }));
@@ -1045,7 +1092,7 @@ function renderPendencias() {
   if (!pend.length && !decididas.length) { box.hidden = true; return; }
   box.hidden = false;
   const inicios = pend.filter((p) => p.tipo === "inicio");
-  box.replaceChildren(
+  box.replaceChildren(...[
     el("h4", { class: "subtitulo-bloco" }, icone("clock"), pend.length ? `Decida antes de publicar (${pend.length})` : "Decisões tomadas"),
     inicios.length ? el("p", { class: "texto-pequeno", style: "margin-top:.5rem", text: "Estas aulas começam num horário que não está na grade. Mantenha o horário informado (autorizar) ou coloque a aula no horário da grade." }) : null,
     ...inicios.map((p) => el("div", { class: "pendencia" },
@@ -1057,7 +1104,8 @@ function renderPendencias() {
         el("button", { type: "button", class: "botao botao-suave", onclick: () => decidir(p.chave, "grade") }, icone("clock"), `Colocar às ${p.grade}`)))),
     decididas.length ? el("div", { class: "texto-pequeno", style: "margin-top:.6rem" },
       `${plural(decididas.length, "decisão tomada", "decisões tomadas")}. `,
-      el("button", { type: "button", class: "botao-link", style: "display:inline-flex;min-height:0", onclick: () => decidir(null) }, "Refazer as decisões")) : null);
+      el("button", { type: "button", class: "botao-link", style: "display:inline-flex;min-height:0", onclick: () => decidir(null) }, "Refazer as decisões")) : null,
+  ].filter(Boolean));
 }
 
 // ---------------------------------------------------------------- destino da importação
