@@ -9,7 +9,7 @@
 // dentro do próprio arquivo e os dados vão embutidos.
 
 // ordem em que os módulos são definidos (cada um só usa os anteriores)
-const MODULOS = ["leitor-xlsx", "interpretar", "publicar", "recursos", "offline", "app"];
+const MODULOS = ["leitor-xlsx", "interpretar", "leitura", "publicar", "recursos", "offline", "app"];
 
 // transforma um módulo ES em um bloco que guarda o que ele exporta em __m
 export function comoBloco(nome, codigo) {

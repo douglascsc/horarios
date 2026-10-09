@@ -3,14 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009k";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009k";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009m";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009m";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
+  protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009k";
-import { gerarArquivoOffline } from "./offline.js?v=20261009k";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009k";
+} from "./publicar.js?v=20261009m";
+import { gerarArquivoOffline } from "./offline.js?v=20261009m";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009m";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009m";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -59,7 +61,10 @@ const estado = {
   exibir: "grade",
   ordenar: "horario",
   comparar: "",          // id do período comparado com o atual ("" = sem comparação)
+  leitura: null,         // dados/leitura.json (horários protegidos por senha de leitura)
+  chaveLeitura: null,    // chave dos horários, destrancada com a senha de leitura
 };
+const CHAVE_LEITURA_GUARDADA = "horarios-chave-leitura";
 const periodos = () => (estado.indice ? estado.indice.periodos : []);
 const periodoPorId = (id) => periodos().find((p) => p.id === id);
 const dadosAtivos = () => (estado.previa && estado.importacao ? dadosDaImportacao() : estado.dadosPorPeriodo.get(estado.periodoId) || null);
@@ -106,12 +111,74 @@ async function carregarJson(caminho) {
   try {
     const r = await fetch(`${caminho}?v=${Date.now()}`, { cache: "no-store" });
     if (!r.ok) return null;
-    return await r.json();
+    const obj = await r.json();
+    if (!estaCifrado(obj)) return obj;
+    if (!estado.chaveLeitura) return null;
+    try { return await decifrarJson(estado.chaveLeitura, obj); } catch { return null; }
   } catch { return null; }
+}
+
+// ---- senha de leitura: tela "Horários protegidos"
+let resolverPortao = null;
+function pedirSenhaLeitura(erro) {
+  $("carregando").hidden = true;
+  $("view-consulta").hidden = true;
+  $("view-admin").hidden = true;
+  $("portao").hidden = false;
+  $("status-publicacao").className = "status-pill";
+  $("status-publicacao-texto").textContent = "Protegido";
+  $("msg-portao").hidden = !erro;
+  if (erro) $("msg-portao").textContent = erro;
+  setTimeout(() => $("portao-senha").focus(), 0);
+  return new Promise((ok) => { resolverPortao = ok; });
+}
+function ligarPortao() {
+  $("form-portao").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const espera = bloqueio();
+    if (espera) { $("msg-portao").textContent = `Muitas tentativas com senha errada. Aguarde ${espera} s.`; $("msg-portao").hidden = false; return; }
+    const botao = $("btn-portao");
+    ocupado(botao, true, "Verificando…");
+    try {
+      estado.chaveLeitura = await destrancarComSenha(estado.leitura, $("portao-senha").value);
+      guardar.gravar("horarios-erros", "0");
+      if ($("portao-lembrar").checked) guardar.gravar(CHAVE_LEITURA_GUARDADA, paraBase64(estado.chaveLeitura));
+      $("portao-senha").value = "";
+      $("portao").hidden = true;
+      $("carregando").hidden = false;
+      if (resolverPortao) { const r = resolverPortao; resolverPortao = null; r(); }
+    } catch {
+      registrarErroSenha();
+      $("msg-portao").textContent = "Senha incorreta. Confira com a coordenação.";
+      $("msg-portao").hidden = false;
+      $("portao-senha").select();
+    } finally { ocupado(botao, false); }
+  });
+  $("btn-bloquear").addEventListener("click", () => { guardar.apagar(CHAVE_LEITURA_GUARDADA); location.reload(); });
 }
 function dadosValidos(d) { return d && Array.isArray(d.aulas) && Array.isArray(d.turmas); }
 
 async function carregarIndice() {
+  if (!OFFLINE) {
+    const leitura = await carregarJson(ARQUIVO_LEITURA);
+    estado.leitura = leitura && leitura.chave && leitura.sal ? leitura : null;
+    if (estado.leitura) {
+      const guardada = guardar.ler(CHAVE_LEITURA_GUARDADA);
+      if (guardada) { try { estado.chaveLeitura = deBase64(guardada); } catch { estado.chaveLeitura = null; } }
+      let indice = estado.chaveLeitura ? await carregarJson(ARQUIVO_INDICE) : null;
+      let erro = "";
+      while (!indice || !Array.isArray(indice.periodos)) {
+        guardar.apagar(CHAVE_LEITURA_GUARDADA);
+        estado.chaveLeitura = null;
+        await pedirSenhaLeitura(erro);
+        indice = await carregarJson(ARQUIVO_INDICE);
+        erro = "Não foi possível abrir os horários. Verifique a conexão ou se a senha mudou.";
+      }
+      estado.indice = indice;
+      $("btn-bloquear").hidden = !guardar.ler(CHAVE_LEITURA_GUARDADA);
+      return;
+    }
+  }
   const indice = await carregarJson(ARQUIVO_INDICE);
   if (indice && Array.isArray(indice.periodos)) { estado.indice = indice; return; }
   // formato antigo: um único arquivo dados/horarios.json
@@ -134,14 +201,18 @@ async function iniciar() {
   desenharIcones();
   ligarConsulta();
   ligarAdmin();
+  // tudo ligado ANTES de carregar: a tela de senha de leitura pode aparecer no carregamento
+  ligarModal();
+  ligarAplicativo();
+  ligarPortao();
+  $("form-leitura").addEventListener("submit", aoMudarLeitura);
+  $("form-leitura-remover").addEventListener("submit", aoRemoverLeitura);
   const [, config] = await Promise.all([carregarIndice(), carregarJson(ARQUIVO_CONFIG)]);
   estado.config = config && config.token && config.sal ? config : null;
   atualizarConfigUI();
   await aoMudarEndereco();
   window.addEventListener("hashchange", aoMudarEndereco);
   window.addEventListener("afterprint", aposImprimir);
-  ligarModal();
-  ligarAplicativo();
   $("pular").addEventListener("click", (e) => {
     e.preventDefault();
     const alvo = !$("view-admin").hidden ? $("view-admin") : $("resultados");
@@ -1653,7 +1724,63 @@ function atualizarConfigUI() {
     ? `Publicação configurada: repositório ${c.repo} (ramo ${c.ramo || "main"})${c.criadoEm ? ", desde " + dataBr(c.criadoEm) : ""}. Para publicar, só a senha é pedida.`
     : "A publicação ainda não foi configurada.";
   $("bloco-trocar-senha").hidden = !c;
+  $("cfg-leitura-wrap").hidden = !estado.leitura;
+  // senha de leitura
+  $("bloco-leitura").hidden = !c;
+  const protegido = !!estado.leitura;
+  $("leitura-status").textContent = protegido
+    ? `Os horários estão protegidos${estado.leitura.criadoEm ? " desde " + dataBr(estado.leitura.criadoEm) : ""}: o site pede a senha de leitura (uma vez por aparelho, se o professor marcar "lembrar"). A versão offline baixada por quem já entrou não pede senha.`
+    : "Os horários estão abertos: quem tiver o link do site consegue ver. Defina uma senha de leitura para que só quem a recebeu da coordenação veja.";
+  $("lei-rotulo").textContent = protegido ? "Nova senha de leitura" : "Senha de leitura";
+  $("btn-leitura-texto").textContent = protegido ? "Trocar a senha de leitura" : "Proteger os horários";
+  $("lei-renovar-wrap").hidden = !protegido;
+  $("form-leitura-remover").hidden = !protegido;
   renderPublicarConfig();
+}
+
+async function aoMudarLeitura(e) {
+  e.preventDefault();
+  if (!estado.config) return;
+  const nova = $("lei-nova").value, nova2 = $("lei-nova2").value, pub = $("lei-pub").value;
+  if (nova !== nova2) { mensagem("msg-leitura", "error", "As duas senhas de leitura não são iguais."); return; }
+  if (nova.length < TAMANHO_MINIMO_SENHA_LEITURA) { mensagem("msg-leitura", "error", `A senha de leitura precisa ter pelo menos ${TAMANHO_MINIMO_SENHA_LEITURA} caracteres.`); return; }
+  const espera = bloqueio();
+  if (espera) { mensagem("msg-leitura", "error", `Muitas tentativas com senha errada. Aguarde ${espera} s.`); return; }
+  const botao = $("btn-leitura");
+  ocupado(botao, true, "Gravando…");
+  const protegido = !!estado.leitura;
+  mensagem("msg-leitura", "info", protegido ? "Trocando a senha de leitura…" : "Cifrando os horários e gravando…");
+  try {
+    const r = protegido ? await trocarSenhaLeitura(estado.config, pub, nova, $("lei-renovar").checked) : await protegerLeitura(estado.config, pub, nova);
+    guardar.gravar("horarios-erros", "0");
+    estado.config = r.config; estado.leitura = r.leitura; estado.chaveLeitura = r.chave;
+    guardar.gravar(CHAVE_LEITURA_GUARDADA, paraBase64(r.chave));
+    for (const id of ["lei-nova", "lei-nova2", "lei-pub"]) $(id).value = "";
+    $("lei-renovar").checked = false;
+    mensagem("msg-leitura", "success", `${protegido ? "Senha de leitura trocada" : "Horários protegidos"}. Em cerca de 1 minuto o site passa a pedir a senha. Passe a senha aos professores por um canal seguro.`);
+    atualizarConfigUI();
+  } catch (err) {
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+    mensagem("msg-leitura", "error", err instanceof ErroPublicacao ? (err.message === "Senha incorreta." ? "Senha de publicação incorreta." : err.message) : "Não foi possível gravar. Nada foi alterado.");
+    if (!(err instanceof ErroPublicacao)) console.error(err);
+  } finally { ocupado(botao, false); }
+}
+async function aoRemoverLeitura(e) {
+  e.preventDefault();
+  if (!estado.config || !estado.leitura) return;
+  const botao = $("btn-leitura-remover");
+  ocupado(botao, true, "Removendo…");
+  try {
+    const r = await removerProtecaoLeitura(estado.config, $("lei-pub2").value);
+    estado.config = r.config; estado.leitura = null; estado.chaveLeitura = null;
+    guardar.apagar(CHAVE_LEITURA_GUARDADA);
+    $("lei-pub2").value = ""; $("lei-remover-ok").checked = false;
+    mensagem("msg-leitura", "success", "Proteção removida. Em cerca de 1 minuto os horários voltam a abrir sem senha.");
+    atualizarConfigUI();
+  } catch (err) {
+    if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
+    mensagem("msg-leitura", "error", err instanceof ErroPublicacao ? (err.message === "Senha incorreta." ? "Senha de publicação incorreta." : err.message) : "Não foi possível gravar. Nada foi alterado.");
+  } finally { ocupado(botao, false); }
 }
 
 async function aoConfigurar(e) {
@@ -1665,8 +1792,8 @@ async function aoConfigurar(e) {
   ocupado(botao, true, "Salvando…");
   mensagem("msg-config", "info", "Conferindo o token e salvando a configuração cifrada no repositório…");
   try {
-    estado.config = await salvarConfiguracao({ token, repo, senha });
-    for (const id of ["cfg-token", "cfg-senha", "cfg-senha2"]) $(id).value = "";
+    estado.config = await salvarConfiguracao({ token, repo, senha, senhaLeitura: $("cfg-senha-leitura").value, leitura: estado.leitura });
+    for (const id of ["cfg-token", "cfg-senha", "cfg-senha2", "cfg-senha-leitura"]) $(id).value = "";
     mensagem("msg-config", "success", "Configuração salva. A partir de agora, para publicar basta a senha (em qualquer computador).");
     atualizarConfigUI();
     if (estado.importacao) renderResumoDestino();

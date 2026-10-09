@@ -13,6 +13,8 @@ export const TAMANHO_MINIMO_SENHA = 10;
 export const ARQUIVO_CONFIG = "dados/publicacao.json";
 export const ARQUIVO_DADOS = "dados/horarios.json"; // formato antigo (um período só), ainda lido se não houver índice
 
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, gerarChave, cifrarJson, decifrarJson, trancarComSenha, destrancarComSenha } from "./leitura.js?v=20261009m";
+
 export class ErroPublicacao extends Error {}
 
 const b64 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -83,11 +85,37 @@ export async function verificarToken(token, repo) {
   return info.default_branch || "main";
 }
 
-// Grava a configuração (token cifrado) no repositório.
-export async function salvarConfiguracao({ token, repo, senha }) {
-  if (senha.length < TAMANHO_MINIMO_SENHA) throw new ErroPublicacao(`A senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
-  const ramo = await verificarToken(token, repo);
+// A chave da senha de leitura também fica na configuração, trancada com a
+// senha de publicação (mesmo sal), para publicar sem a senha de leitura.
+async function trancarNaConfig(config, senha, bruta) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await chaveDaSenha(senha, deB64(config.sal), config.iteracoes || ITERACOES);
+  return { iv: b64(iv), cifra: b64(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, bruta))) };
+}
+async function chaveLeituraDaConfig(config, senha) {
+  if (!config.chaveLeitura) return null;
+  try {
+    const k = await chaveDaSenha(senha, deB64(config.sal), config.iteracoes || ITERACOES);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: deB64(config.chaveLeitura.iv) }, k, deB64(config.chaveLeitura.cifra)));
+  } catch { throw new ErroPublicacao("Senha incorreta."); }
+}
+
+// Grava a configuração (token cifrado) no repositório. Se os horários
+// estiverem protegidos, informe a chave de leitura (bruta) para mantê-la.
+async function montarConfig({ token, repo, ramo, senha, chaveLeitura }) {
   const config = { versao: 1, repo, ramo, ...(await cifrarToken(token, senha)), criadoEm: new Date().toISOString() };
+  if (chaveLeitura) config.chaveLeitura = await trancarNaConfig(config, senha, chaveLeitura);
+  return config;
+}
+export async function salvarConfiguracao({ token, repo, senha, senhaLeitura, leitura }) {
+  if (senha.length < TAMANHO_MINIMO_SENHA) throw new ErroPublicacao(`A senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
+  let chaveLeitura = null;
+  if (leitura) {
+    if (!senhaLeitura) throw new ErroPublicacao("Os horários estão protegidos: informe também a senha de leitura atual.");
+    try { chaveLeitura = await destrancarComSenha(leitura, senhaLeitura); } catch { throw new ErroPublicacao("A senha de leitura está incorreta."); }
+  }
+  const ramo = await verificarToken(token, repo);
+  const config = await montarConfig({ token, repo, ramo, senha, chaveLeitura });
   await gravarArquivo(token, repo, ramo, ARQUIVO_CONFIG, JSON.stringify(config, null, 2) + "\n", "Atualiza a configuração de publicação (token cifrado)");
   return config;
 }
@@ -95,7 +123,10 @@ export async function salvarConfiguracao({ token, repo, senha }) {
 export async function trocarSenha(config, senhaAtual, senhaNova) {
   if (senhaNova.length < TAMANHO_MINIMO_SENHA) throw new ErroPublicacao(`A nova senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
   const token = await decifrarToken(config, senhaAtual);
-  return salvarConfiguracao({ token, repo: config.repo, senha: senhaNova });
+  const chaveLeitura = await chaveLeituraDaConfig(config, senhaAtual);
+  const novo = await montarConfig({ token, repo: config.repo, ramo: config.ramo || "main", senha: senhaNova, chaveLeitura });
+  await gravarArquivo(token, config.repo, config.ramo || "main", ARQUIVO_CONFIG, JSON.stringify(novo, null, 2) + "\n", "Troca a senha de publicação");
+  return novo;
 }
 
 // ---------------------------------------------------------------- períodos letivos
@@ -116,16 +147,26 @@ function decodificarBase64Utf8(b) { return new TextDecoder().decode(deB64(b.repl
 
 // Índice atual lido direto do repositório (não do site, que pode estar
 // em cache), para nunca sobrescrever uma publicação recente.
-async function lerIndiceRemoto(token, repo, ramo) {
-  const r = await github(token, "GET", `/repos/${repo}/contents/${ARQUIVO_INDICE}?ref=${encodeURIComponent(ramo)}`);
-  if (!r || !r.content) return { versao: 2, padrao: null, periodos: [] };
-  try {
-    const indice = JSON.parse(decodificarBase64Utf8(r.content));
-    if (!Array.isArray(indice.periodos)) throw new Error();
-    return indice;
-  } catch {
-    throw new ErroPublicacao("O índice de períodos no repositório está corrompido (dados/periodos.json).");
-  }
+async function lerJsonRemoto(token, repo, ramo, caminho, chaveLeitura) {
+  const r = await github(token, "GET", `/repos/${repo}/contents/${caminho}?ref=${encodeURIComponent(ramo)}`);
+  if (!r) return null;
+  if (!r.content) throw new ErroPublicacao(`Não foi possível ler ${caminho} no repositório.`);
+  let obj;
+  try { obj = JSON.parse(decodificarBase64Utf8(r.content)); } catch { throw new ErroPublicacao(`O arquivo ${caminho} no repositório está corrompido.`); }
+  if (!estaCifrado(obj)) return obj;
+  if (!chaveLeitura) throw new ErroPublicacao("Os horários estão protegidos por senha de leitura, mas esta configuração não tem a chave. Refaça a configuração da publicação informando a senha de leitura.");
+  try { return await decifrarJson(chaveLeitura, obj); } catch { throw new ErroPublicacao(`Não foi possível decifrar ${caminho}: a chave de leitura da configuração não confere.`); }
+}
+async function lerIndiceRemoto(token, repo, ramo, chaveLeitura) {
+  const indice = await lerJsonRemoto(token, repo, ramo, ARQUIVO_INDICE, chaveLeitura);
+  if (!indice) return { versao: 2, padrao: null, periodos: [] };
+  if (!Array.isArray(indice.periodos)) throw new ErroPublicacao("O índice de períodos no repositório está corrompido (dados/periodos.json).");
+  return indice;
+}
+// conteúdo de um arquivo de dados: cifrado se a proteção estiver ligada
+async function conteudoDados(obj, chaveLeitura, bonito) {
+  const final = chaveLeitura ? await cifrarJson(chaveLeitura, obj) : obj;
+  return JSON.stringify(final, null, bonito && !chaveLeitura ? 1 : 0) + "\n";
 }
 
 async function gravarCommit(token, repo, ramo, mudancas, mensagem) {
@@ -159,9 +200,11 @@ function resumoDoPeriodo(id, nome, descricao, dados, datas) {
 //     | { tipo: "remover", id } | { tipo: "padrao", id } | { tipo: "renomear", id, nome, descricao }
 export async function alterarPeriodos(config, senha, op) {
   const token = await decifrarToken(config, senha);
+  const chaveLeitura = await chaveLeituraDaConfig(config, senha);
   const repo = config.repo, ramo = config.ramo || "main";
-  const indice = await lerIndiceRemoto(token, repo, ramo);
+  const indice = await lerIndiceRemoto(token, repo, ramo, chaveLeitura);
   const lista = indice.periodos.slice();
+  let dadosPlanos = null;
   const acha = (id) => lista.find((p) => p.id === id);
   const mudancas = [];
   let mensagem;
@@ -192,7 +235,8 @@ export async function alterarPeriodos(config, senha, op) {
       if (saiId !== id) mudancas.push({ caminho: arquivoDoPeriodo(saiId), conteudo: null });
     }
     lista.splice(pos, 0, entrada);
-    mudancas.push({ caminho: arquivoDoPeriodo(id), conteudo: JSON.stringify(dados) + "\n" });
+    mudancas.push({ caminho: arquivoDoPeriodo(id), conteudo: await conteudoDados(dados, chaveLeitura) });
+    dadosPlanos = dados;
     if (op.padrao || !indice.padrao || indice.padrao === saiId) indice.padrao = id;
     const origem = dados.arquivo ? ` — ${dados.arquivo}` : "";
     if (!saiId) mensagem = `Adiciona o período ${nome}${origem} (${dados.aulas.length} aulas)`;
@@ -226,7 +270,59 @@ export async function alterarPeriodos(config, senha, op) {
   } else throw new ErroPublicacao("Operação desconhecida.");
 
   const novoIndice = { versao: 2, padrao: indice.padrao, atualizadoEm: new Date().toISOString(), periodos: lista.map((p) => ({ ...p })) };
-  mudancas.push({ caminho: ARQUIVO_INDICE, conteudo: JSON.stringify(novoIndice, null, 1) + "\n" });
+  mudancas.push({ caminho: ARQUIVO_INDICE, conteudo: await conteudoDados(novoIndice, chaveLeitura, true) });
   const link = await gravarCommit(token, repo, ramo, mudancas, mensagem);
-  return { indice: novoIndice, link, dados: op.tipo === "importar" ? JSON.parse(mudancas.find((m) => m.caminho.startsWith("dados/periodos/") && m.conteudo)?.conteudo || "null") : null };
+  return { indice: novoIndice, link, dados: dadosPlanos };
+}
+
+// ---------------------------------------------------------------- senha de leitura
+// Liga, troca ou desliga a proteção: regrava o índice e todos os períodos
+// (cifrados ou não), o dados/leitura.json e a configuração, num commit só.
+async function regravarTudo(config, senha, { chaveAtual, chaveNova, leituraNova, apagarLeitura, mensagem }) {
+  const token = await decifrarToken(config, senha);
+  const repo = config.repo, ramo = config.ramo || "main";
+  const indice = await lerIndiceRemoto(token, repo, ramo, chaveAtual);
+  const mudancas = [];
+  for (const p of indice.periodos) {
+    const dados = await lerJsonRemoto(token, repo, ramo, p.arquivo, chaveAtual);
+    if (dados) mudancas.push({ caminho: p.arquivo, conteudo: await conteudoDados(dados, chaveNova) });
+  }
+  mudancas.push({ caminho: ARQUIVO_INDICE, conteudo: await conteudoDados({ ...indice, versao: 2 }, chaveNova, true) });
+  if (leituraNova) mudancas.push({ caminho: ARQUIVO_LEITURA, conteudo: JSON.stringify(leituraNova, null, 1) + "\n" });
+  if (apagarLeitura) mudancas.push({ caminho: ARQUIVO_LEITURA, conteudo: null });
+  const novaConfig = { ...config };
+  delete novaConfig.chaveLeitura;
+  if (chaveNova) novaConfig.chaveLeitura = await trancarNaConfig(config, senha, chaveNova);
+  mudancas.push({ caminho: ARQUIVO_CONFIG, conteudo: JSON.stringify(novaConfig, null, 2) + "\n" });
+  await gravarCommit(token, repo, ramo, mudancas, mensagem);
+  return { config: novaConfig, leitura: apagarLeitura ? null : leituraNova, chave: chaveNova };
+}
+function validarSenhaLeitura(s) {
+  if (String(s || "").length < TAMANHO_MINIMO_SENHA_LEITURA) throw new ErroPublicacao(`A senha de leitura precisa ter pelo menos ${TAMANHO_MINIMO_SENHA_LEITURA} caracteres.`);
+}
+export async function protegerLeitura(config, senha, senhaLeitura) {
+  validarSenhaLeitura(senhaLeitura);
+  if (config.chaveLeitura) throw new ErroPublicacao("Os horários já estão protegidos. Use \"Trocar a senha de leitura\".");
+  await decifrarToken(config, senha);
+  const chave = gerarChave();
+  return regravarTudo(config, senha, { chaveAtual: null, chaveNova: chave, leituraNova: await trancarComSenha(chave, senhaLeitura), mensagem: "Protege os horários com senha de leitura" });
+}
+export async function trocarSenhaLeitura(config, senha, senhaLeitura, renovarChave) {
+  validarSenhaLeitura(senhaLeitura);
+  const chaveAtual = await chaveLeituraDaConfig(config, senha);
+  if (!chaveAtual) throw new ErroPublicacao("Os horários não estão protegidos.");
+  if (!renovarChave) {
+    // só troca a senha: quem já entrou neste aparelho continua entrando
+    const token = await decifrarToken(config, senha);
+    const leitura = await trancarComSenha(chaveAtual, senhaLeitura);
+    await gravarCommit(token, config.repo, config.ramo || "main", [{ caminho: ARQUIVO_LEITURA, conteudo: JSON.stringify(leitura, null, 1) + "\n" }], "Troca a senha de leitura");
+    return { config, leitura, chave: chaveAtual };
+  }
+  const chave = gerarChave();
+  return regravarTudo(config, senha, { chaveAtual, chaveNova: chave, leituraNova: await trancarComSenha(chave, senhaLeitura), mensagem: "Troca a senha de leitura e a chave (bloqueia aparelhos que já tinham entrado)" });
+}
+export async function removerProtecaoLeitura(config, senha) {
+  const chaveAtual = await chaveLeituraDaConfig(config, senha);
+  if (!chaveAtual) throw new ErroPublicacao("Os horários não estão protegidos.");
+  return regravarTudo(config, senha, { chaveAtual, chaveNova: null, apagarLeitura: true, mensagem: "Remove a senha de leitura dos horários" });
 }

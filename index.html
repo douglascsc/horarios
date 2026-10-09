@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009k"></script>
-  <script src="js/icones.js?v=20261009k"></script>
+  <script src="js/protecao.js?v=20261009m"></script>
+  <script src="js/icones.js?v=20261009m"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009k">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009m">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,12 +23,13 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="modulepreload" href="js/interpretar.js?v=20261009k">
-  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009k">
-  <link rel="modulepreload" href="js/publicar.js?v=20261009k">
-  <link rel="modulepreload" href="js/recursos.js?v=20261009k">
-  <link rel="modulepreload" href="js/offline.js?v=20261009k">
-  <script type="module" src="js/app.js?v=20261009k"></script>
+  <link rel="modulepreload" href="js/interpretar.js?v=20261009m">
+  <link rel="modulepreload" href="js/leitor-xlsx.js?v=20261009m">
+  <link rel="modulepreload" href="js/publicar.js?v=20261009m">
+  <link rel="modulepreload" href="js/recursos.js?v=20261009m">
+  <link rel="modulepreload" href="js/offline.js?v=20261009m">
+  <link rel="modulepreload" href="js/leitura.js?v=20261009m">
+  <script type="module" src="js/app.js?v=20261009m"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -75,6 +76,17 @@
      <span class="spinner spinner-verde" aria-hidden="true"></span>
      <span>Carregando os horários…</span>
     </div>
+    <section id="portao" class="glass-surface portao" hidden aria-labelledby="portao-titulo">
+     <div class="portao-icone" aria-hidden="true"><i data-lucide="lock"></i></div>
+     <h2 id="portao-titulo" class="titulo-secao">Horários protegidos</h2>
+     <p class="subtitulo">Digite a senha de leitura fornecida pela coordenação.</p>
+     <form id="form-portao" autocomplete="off">
+      <label><span class="campo-rotulo">Senha de leitura</span><input id="portao-senha" class="text-field" type="password" autocomplete="current-password" required></label>
+      <label class="caixa-marcar"><input id="portao-lembrar" type="checkbox" checked> <span>Lembrar neste aparelho (não use em computador compartilhado)</span></label>
+      <div class="linha-acoes"><button id="btn-portao" class="botao botao-primario" type="submit"><i data-lucide="key-round"></i> <span>Ver os horários</span></button></div>
+     </form>
+     <div id="msg-portao" class="notice notice-error" style="margin-top:1rem" hidden role="alert"></div>
+    </section>
     <section id="view-consulta" hidden>
      <section class="hero-panel glass-surface reveal">
       <div id="seletor-periodo" class="seletor-periodo" hidden></div>
@@ -298,10 +310,33 @@
           <label><span class="campo-rotulo">Repositório (dono/nome)</span><input id="cfg-repo" class="text-field" type="text" required placeholder="dono/nome"></label>
           <label><span class="campo-rotulo">Senha de publicação</span><input id="cfg-senha" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
           <label><span class="campo-rotulo">Repita a senha</span><input id="cfg-senha2" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
+          <label id="cfg-leitura-wrap" hidden><span class="campo-rotulo">Senha de leitura atual (os horários estão protegidos)</span><input id="cfg-senha-leitura" class="text-field" type="password" autocomplete="off"></label>
          </div>
          <div class="linha-acoes"><button id="btn-config" class="botao botao-primario" type="submit"><i data-lucide="key-round"></i> <span>Salvar configuração</span></button></div>
         </form>
         <div id="msg-config" class="notice" style="margin-top:1rem" hidden role="status"></div>
+
+        <div id="bloco-leitura" hidden>
+         <h4 style="margin-top:1.5rem;font-weight:800">Senha de leitura (quem pode ver os horários)</h4>
+         <p id="leitura-status" class="texto-pequeno" style="margin-top:.25rem"></p>
+         <form id="form-leitura" autocomplete="off">
+          <div class="form-grade duas">
+           <label><span class="campo-rotulo" id="lei-rotulo">Nova senha de leitura</span><input id="lei-nova" class="text-field" type="password" autocomplete="new-password" minlength="6" required></label>
+           <label><span class="campo-rotulo">Repita a senha de leitura</span><input id="lei-nova2" class="text-field" type="password" autocomplete="new-password" minlength="6" required></label>
+           <label><span class="campo-rotulo">Senha de publicação</span><input id="lei-pub" class="text-field" type="password" autocomplete="current-password" required></label>
+          </div>
+          <label id="lei-renovar-wrap" class="caixa-marcar" hidden><input id="lei-renovar" type="checkbox"> <span>Bloquear também quem já entrou com a senha antiga (gera uma chave nova; todos precisarão digitar a senha nova)</span></label>
+          <div class="linha-acoes"><button id="btn-leitura" class="botao botao-primario" type="submit"><i data-lucide="lock"></i> <span id="btn-leitura-texto">Proteger os horários</span></button></div>
+         </form>
+         <form id="form-leitura-remover" autocomplete="off" hidden>
+          <div class="form-grade duas" style="margin-top:.5rem">
+           <label><span class="campo-rotulo">Senha de publicação</span><input id="lei-pub2" class="text-field" type="password" autocomplete="current-password" required></label>
+          </div>
+          <label class="caixa-marcar"><input id="lei-remover-ok" type="checkbox" required> <span>Entendo que os horários voltam a ficar visíveis para quem tiver o link.</span></label>
+          <div class="linha-acoes"><button id="btn-leitura-remover" class="botao botao-secundario" type="submit"><span>Remover a proteção</span></button></div>
+         </form>
+         <div id="msg-leitura" class="notice" style="margin-top:1rem" hidden role="status"></div>
+        </div>
 
         <div id="bloco-trocar-senha" hidden>
          <h4 style="margin-top:1.5rem;font-weight:800">Trocar a senha</h4>
@@ -331,6 +366,7 @@
 
    <footer class="rodape">
     <div class="container">
+     <button id="btn-bloquear" class="botao-link" type="button" hidden><i data-lucide="lock"></i> Bloquear neste aparelho</button>
      <span>Este projeto é de iniciativa docente. Em caso de divergência, vale o horário oficial divulgado pela instituição.</span>
      <span><span id="ano-rodape"></span> - Desenvolvido por <strong class="credito">Prof. Douglas Camargo Carvalho</strong>, docente do IFSul — Campus Sapiranga.</span>
     </div>
