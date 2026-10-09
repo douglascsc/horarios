@@ -52,16 +52,16 @@ async function github(token, metodo, caminho, corpo) {
       cache: "no-store",
     });
   } catch {
-    throw new ErroPublicacao("Sem conexão com o GitHub. Verifique a internet e tente de novo.");
+    throw new ErroPublicacao("Sem conexão com o servidor de publicação. Verifique a internet e tente de novo.");
   }
   if (resp.status === 404 && metodo === "GET") return null;
   if (!resp.ok) {
     let msg = "";
     try { msg = (await resp.json()).message || ""; } catch { /* sem corpo */ }
-    if (resp.status === 401) throw new ErroPublicacao("O token do GitHub foi recusado (expirou ou foi revogado). Refaça a configuração da publicação com um token novo.");
+    if (resp.status === 401) throw new ErroPublicacao("O token de acesso foi recusado (expirou ou foi revogado). Refaça a configuração da publicação com um token novo.");
     if (resp.status === 403 || resp.status === 404) throw new ErroPublicacao(`O token não tem permissão de escrita no repositório (${resp.status}${msg ? ": " + msg : ""}). Confira se ele dá acesso "Contents: Read and write" a este repositório.`);
     if (resp.status === 409 || (resp.status === 422 && metodo === "PATCH")) throw new ErroPublicacao("Outra publicação foi feita ao mesmo tempo. Nada foi alterado; tente de novo.");
-    throw new ErroPublicacao(`O GitHub recusou a operação (${resp.status}${msg ? ": " + msg : ""}).`);
+    throw new ErroPublicacao(`O servidor de publicação recusou a operação (${resp.status}${msg ? ": " + msg : ""}).`);
   }
   return resp.json();
 }

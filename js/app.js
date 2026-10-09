@@ -3,14 +3,14 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009d";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009d";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009e";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009e";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009d";
-import { gerarArquivoOffline } from "./offline.js?v=20261009d";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009d";
+} from "./publicar.js?v=20261009e";
+import { gerarArquivoOffline } from "./offline.js?v=20261009e";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009e";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -1214,7 +1214,7 @@ function renderResumoDestino() {
       el("strong", { text: `Atenção: o período ${sai.nome} será substituído.` }),
       ` Os ${plural(sai.aulas || 0, "horário", "horários")} publicados em ${dataBr(sai.publicadoEm) || "data desconhecida"} serão trocados pelos ${novos} desta planilha${idDoPeriodo(sai.nome) !== idDoPeriodo(nome) ? `, com o nome "${nome}"` : ""}.`,
       outros.length ? ` ${outros.length === 1 ? "O período" : "Os períodos"} ${outros.map((p) => p.nome).join(", ")} ${outros.length === 1 ? "continua" : "continuam"} intacto${outros.length === 1 ? "" : "s"}.` : "",
-      " A versão anterior fica no histórico do GitHub."));
+      " A versão anterior fica guardada no histórico de versões."));
   } else {
     box.className = "notice notice-info";
     box.replaceChildren(icone("info"), el("span", null,
@@ -1340,7 +1340,7 @@ function formAcao(p) {
   const textos = {
     padrao: `"${p.nome}" passará a ser o período que abre primeiro no site. Nenhum horário muda.`,
     renomear: `Mude o nome, a observação ou as datas do período "${p.nome}". Os horários não mudam.`,
-    remover: `O período "${p.nome}" (${plural(p.aulas || 0, "aula", "aulas")}) deixará de aparecer no site. Os outros períodos não mudam. A versão removida fica no histórico do GitHub.`,
+    remover: `O período "${p.nome}" (${plural(p.aulas || 0, "aula", "aulas")}) deixará de aparecer no site. Os outros períodos não mudam. A versão removida fica guardada no histórico de versões.`,
   };
   const form = el("form", { class: `acao-periodo acao-${tipo}`, autocomplete: "off" },
     el("div", { class: `notice ${tipo === "remover" ? "notice-error" : "notice-info"}` }, icone(tipo === "remover" ? "triangle-alert" : "info"), el("span", { text: textos[tipo] })),
@@ -1377,7 +1377,7 @@ function formAcao(p) {
       acaoPeriodo = null;
       renderPeriodosAdmin();
       if (estado.importacao) { prepararDestino(estado.importacao); renderDestino(); }
-      mensagem("msg-periodos", "success", "Feito. O site público é atualizado em cerca de 1 minuto. ", r.link ? el("a", { href: r.link, target: "_blank", rel: "noopener", text: "Ver o registro no GitHub" }) : null);
+      mensagem("msg-periodos", "success", "Feito. O site público é atualizado em cerca de 1 minuto.");
     } catch (err) {
       if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
       mensagem("msg-acao", "error", err instanceof ErroPublicacao ? err.message : "Não foi possível gravar. Tente de novo.");
@@ -1461,8 +1461,7 @@ async function aoPublicar(e) {
     estado.importacao = null;
     esconderEtapas();
     renderPeriodosAdmin();
-    mensagem("msg-envio", "success", `${sai ? `Período ${sai.nome} substituído` : `Período ${nome} publicado`}! O site público é atualizado em cerca de 1 minuto. `,
-      r.link ? el("a", { href: r.link, target: "_blank", rel: "noopener", text: "Ver o registro no GitHub" }) : null);
+    mensagem("msg-envio", "success", `${sai ? `Período ${sai.nome} substituído` : `Período ${nome} publicado`}! O site público é atualizado em cerca de 1 minuto.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (err) {
     if (err instanceof ErroPublicacao && err.message === "Senha incorreta.") registrarErroSenha();
