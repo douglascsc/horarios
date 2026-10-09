@@ -41,7 +41,7 @@ async function dataUrl(url) {
 const seguroEmScript = (t) => t.replace(/<\/(script)/gi, "<\\/$1");
 
 // arquivos: { "dados/periodos.json": {...}, "dados/periodos/2026-2.json": {...} }
-export async function gerarArquivoOffline({ versao, arquivos, urlSite }) {
+export async function gerarArquivoOffline({ versao, arquivos }) {
   const v = versao ? `?v=${versao}` : "";
   const [html, css, icones, logo, favicon, ...codigos] = await Promise.all([
     texto("index.html"), texto(`css/estilo.css${v}`), texto(`js/icones.js${v}`),
@@ -49,7 +49,8 @@ export async function gerarArquivoOffline({ versao, arquivos, urlSite }) {
     ...MODULOS.map((n) => texto(`js/${n}.js${v}`)),
   ]);
   const geradoEm = new Date().toISOString();
-  const pacote = { geradoEm, urlSite, arquivos };
+  // o endereço do site NÃO vai no arquivo (ele pode circular sem divulgar o link)
+  const pacote = { geradoEm, arquivos };
   const bundle = "const __m = {};\n" + MODULOS.map((n, i) => comoBloco(n, codigos[i])).join("\n");
 
   const doc = new DOMParser().parseFromString(html, "text/html");

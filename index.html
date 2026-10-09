@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009e"></script>
-  <script src="js/icones.js?v=20261009e"></script>
+  <script src="js/protecao.js?v=20261009f"></script>
+  <script src="js/icones.js?v=20261009f"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009e">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009f">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,7 +23,7 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <script type="module" src="js/app.js?v=20261009e"></script>
+  <script type="module" src="js/app.js?v=20261009f"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -275,7 +275,7 @@
         <form id="form-config" autocomplete="off">
          <div class="form-grade duas">
           <label><span class="campo-rotulo">Token de acesso</span><input id="cfg-token" class="text-field" type="password" autocomplete="off" required></label>
-          <label><span class="campo-rotulo">Repositório (dono/nome)</span><input id="cfg-repo" class="text-field" type="text" required></label>
+          <label><span class="campo-rotulo">Repositório (dono/nome)</span><input id="cfg-repo" class="text-field" type="text" required placeholder="dono/nome"></label>
           <label><span class="campo-rotulo">Senha de publicação</span><input id="cfg-senha" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
           <label><span class="campo-rotulo">Repita a senha</span><input id="cfg-senha2" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
          </div>

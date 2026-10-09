@@ -3,14 +3,14 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009e";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009e";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009f";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009f";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009e";
-import { gerarArquivoOffline } from "./offline.js?v=20261009e";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009e";
+} from "./publicar.js?v=20261009f";
+import { gerarArquivoOffline } from "./offline.js?v=20261009f";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009f";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -175,8 +175,7 @@ function ligarAplicativo() {
     $("btn-offline").hidden = true;
     $("barra-offline").hidden = false;
     $("barra-offline").classList.add("arquivo-offline");
-    $("barra-offline-texto").replaceChildren(`Versão offline, gerada em ${new Date(OFFLINE.geradoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}: pode estar desatualizada. `,
-      OFFLINE.urlSite ? el("a", { href: OFFLINE.urlSite, target: "_blank", rel: "noopener", text: "Abrir a versão atualizada" }) : "");
+    $("barra-offline-texto").textContent = `Versão offline, gerada em ${new Date(OFFLINE.geradoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.`;
     return;
   }
   $("btn-offline").addEventListener("click", baixarVersaoOffline);
@@ -219,7 +218,7 @@ async function baixarVersaoOffline() {
       if (!d) throw new Error(`Não foi possível carregar o período ${p.nome}.`);
       arquivos[p.arquivo] = d;
     }
-    const { html } = await gerarArquivoOffline({ versao: VERSAO, arquivos, urlSite: location.origin + location.pathname });
+    const { html } = await gerarArquivoOffline({ versao: VERSAO, arquivos });
     const hoje = isoData(new Date());
     baixarArquivo(new Blob([html], { type: "text/html;charset=utf-8" }), `horarios-offline-${hoje}.html`);
     span.textContent = "Baixado!";
@@ -1489,7 +1488,7 @@ function repoPadrao() {
   const m = /^([\w-]+)\.github\.io$/i.exec(location.hostname);
   const pasta = location.pathname.split("/").filter(Boolean)[0];
   if (m && pasta) return `${m[1]}/${pasta}`;
-  return "douglascsc/horarios";
+  return "";
 }
 
 function atualizarConfigUI() {

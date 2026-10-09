@@ -76,7 +76,7 @@ async function gravarArquivo(token, repo, ramo, caminho, conteudo, mensagem) {
 }
 
 export async function verificarToken(token, repo) {
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new ErroPublicacao("Repositório inválido. Use o formato dono/nome (ex.: douglascsc/horarios).");
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new ErroPublicacao("Repositório inválido. Use o formato dono/nome (ex.: escola/horarios).");
   const info = await github(token, "GET", `/repos/${repo}`);
   if (!info) throw new ErroPublicacao("Repositório não encontrado com esse token. Confira o nome e se o token dá acesso a ele.");
   if (info.permissions && info.permissions.push === false) throw new ErroPublicacao("O token consegue ler o repositório, mas não escrever nele.");
