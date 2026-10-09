@@ -10,12 +10,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style id="anti-clickjack">body { display: none !important; }</style>
-  <script src="js/protecao.js?v=20261009f"></script>
-  <script src="js/icones.js?v=20261009f"></script>
+  <script src="js/protecao.js?v=20261009h"></script>
+  <script src="js/icones.js?v=20261009h"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estilo.css?v=20261009f">
+  <link rel="stylesheet" href="css/estilo.css?v=20261009h">
   <meta name="theme-color" content="#2B7A40">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,7 +23,7 @@
   <meta name="apple-mobile-web-app-title" content="Horários">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <script type="module" src="js/app.js?v=20261009f"></script>
+  <script type="module" src="js/app.js?v=20261009h"></script>
  </head>
  <body>
   <!-- só aparece na impressão (capa do PDF de conferência) -->
@@ -155,6 +155,9 @@
        <div class="rotulo-barra">Períodos letivos publicados</div>
        <h3 class="titulo-card">Períodos no site</h3>
        <p class="subtitulo">Até 3 períodos podem ficar disponíveis ao mesmo tempo (ex.: o semestre atual e o próximo). O marcado como <strong>atual</strong> é o que abre primeiro. <span id="periodos-vagas"></span></p>
+       <div class="linha-acoes" style="margin-top:.75rem">
+        <button id="btn-offline-admin" class="botao botao-secundario" type="button" title="Arquivo único com todos os períodos publicados, que abre sem internet e não contém o endereço do site."><i data-lucide="download"></i> <span>Baixar versão offline</span></button>
+       </div>
        <div id="msg-periodos" class="notice" style="margin-top:1rem" hidden role="status"></div>
        <div id="lista-periodos" class="lista-periodos"></div>
       </section>
@@ -243,9 +246,10 @@
        <div class="linha-acoes">
         <button id="btn-previa" class="botao botao-suave" type="button"><i data-lucide="eye"></i> Ver prévia do site</button>
         <button id="btn-pdf-conferencia" class="botao botao-secundario" type="button"><i data-lucide="printer"></i> PDF de conferência</button>
+        <button id="btn-offline-planilha" class="botao botao-secundario" type="button" title="Arquivo único só com esta planilha, sem publicar nada online."><i data-lucide="download"></i> <span>Versão offline desta planilha (sem publicar)</span></button>
         <button id="btn-baixar-json" class="botao botao-secundario" type="button"><i data-lucide="download"></i> Baixar dados (.json)</button>
        </div>
-       <p class="texto-pequeno" style="margin-top:.5rem">O PDF de conferência traz um resumo da revisão e o quadro de todas as turmas, marcado como não publicado, para enviar à coordenação antes de publicar. Na janela de impressão, escolha "Salvar como PDF".</p>
+       <p class="texto-pequeno" style="margin-top:.5rem">O PDF de conferência traz um resumo da revisão e o quadro de todas as turmas, marcado como não publicado, para enviar à coordenação antes de publicar. Na janela de impressão, escolha "Salvar como PDF". A <strong>versão offline desta planilha</strong> gera um arquivo que abre com dois cliques, sem internet, sem publicar nada online.</p>
        <div id="pub-sem-config" class="notice notice-warn" style="margin-top:1rem" hidden>
         <i data-lucide="triangle-alert"></i>
         <span>A publicação ainda não foi configurada neste site. Abra <strong>Configuração da publicação</strong> abaixo (é feito uma vez só).</span>
@@ -305,7 +309,7 @@
    <footer class="rodape">
     <div class="container">
      <span>Este projeto é de iniciativa docente. Em caso de divergência, vale o horário oficial divulgado pela instituição.</span>
-     <span><span id="ano-rodape"></span> - Desenvolvido por <a href="https://douglasc.top/sobre/" target="_blank" rel="noopener">Prof. Douglas Camargo Carvalho</a>, docente do IFSul — Campus Sapiranga.</span>
+     <span><span id="ano-rodape"></span> - Desenvolvido por <strong class="credito">Prof. Douglas Camargo Carvalho</strong>, docente do IFSul — Campus Sapiranga.</span>
     </div>
    </footer>
   </div>

@@ -321,6 +321,7 @@ select.text-field { appearance: none; -webkit-appearance: none; padding-right: 2
 .rodape .container { display: flex; flex-direction: column; align-items: center; gap: .25rem; text-align: center; font-size: .75rem; color: var(--slate-500); }
 .rodape a { font-weight: 600; color: var(--brand-green); text-decoration: none; }
 .rodape a:hover { text-decoration: underline; }
+.rodape .credito { font-weight: 600; color: var(--slate-600); }
 
 /* ---------- animações */
 .reveal { opacity: 0; transform: translateY(16px); animation: reveal .58s cubic-bezier(.2, .75, .25, 1) forwards; }

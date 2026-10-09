@@ -3,14 +3,14 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009f";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009f";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009h";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009h";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, idDoPeriodo, ErroPublicacao,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009f";
-import { gerarArquivoOffline } from "./offline.js?v=20261009f";
-import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009f";
+} from "./publicar.js?v=20261009h";
+import { gerarArquivoOffline } from "./offline.js?v=20261009h";
+import { gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009h";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -178,7 +178,9 @@ function ligarAplicativo() {
     $("barra-offline-texto").textContent = `Versão offline, gerada em ${new Date(OFFLINE.geradoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.`;
     return;
   }
-  $("btn-offline").addEventListener("click", baixarVersaoOffline);
+  $("btn-offline").addEventListener("click", () => baixarVersaoOffline($("btn-offline"), arquivosPublicados));
+  $("btn-offline-admin").addEventListener("click", () => baixarVersaoOffline($("btn-offline-admin"), arquivosPublicados));
+  $("btn-offline-planilha").addEventListener("click", () => baixarVersaoOffline($("btn-offline-planilha"), arquivosDaPlanilha));
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     navigator.serviceWorker.register("sw.js").catch(() => { /* sem modo offline */ });
   }
@@ -204,28 +206,43 @@ function ligarAplicativo() {
   situacao();
 }
 
-async function baixarVersaoOffline() {
-  const botao = $("btn-offline");
+// todos os períodos publicados
+async function arquivosPublicados() {
+  if (!periodos().length) throw new Error("Nenhum período publicado.");
+  const arquivos = { [ARQUIVO_INDICE]: estado.indice };
+  for (const p of periodos()) {
+    await garantirPeriodo(p.id);
+    const d = estado.dadosPorPeriodo.get(p.id);
+    if (!d) throw new Error(`Não foi possível carregar o período ${p.nome}.`);
+    arquivos[p.arquivo] = d;
+  }
+  return { arquivos, nome: "" };
+}
+// só a planilha enviada na área do administrador, sem publicar nada
+async function arquivosDaPlanilha() {
+  if (!estado.importacao) throw new Error("Envie uma planilha primeiro.");
+  const nome = nomeDestino() || "Horários";
+  const id = idDoPeriodo(nome) || "horarios";
+  const dados = { ...dadosParaPublicar(), periodo: { id, nome } };
+  const caminho = `dados/periodos/${id}.json`;
+  const indice = { versao: 2, padrao: id, periodos: [{ id, nome, descricao: $("dest-descricao").value.trim(), arquivo: caminho, publicadoEm: dados.publicadoEm, aulas: dados.aulas.length, turmas: dados.turmas.length, inicioAulas: $("dest-inicio-aulas").value, fimAulas: $("dest-fim-aulas").value }] };
+  return { arquivos: { [ARQUIVO_INDICE]: indice, [caminho]: dados }, nome: id };
+}
+async function baixarVersaoOffline(botao, montar) {
   const span = botao.querySelector("span");
   const original = span.textContent;
   botao.disabled = true;
   span.textContent = "Preparando…";
   try {
-    const arquivos = { [ARQUIVO_INDICE]: estado.indice };
-    for (const p of periodos()) {
-      await garantirPeriodo(p.id);
-      const d = estado.dadosPorPeriodo.get(p.id);
-      if (!d) throw new Error(`Não foi possível carregar o período ${p.nome}.`);
-      arquivos[p.arquivo] = d;
-    }
+    const { arquivos, nome } = await montar();
     const { html } = await gerarArquivoOffline({ versao: VERSAO, arquivos });
     const hoje = isoData(new Date());
-    baixarArquivo(new Blob([html], { type: "text/html;charset=utf-8" }), `horarios-offline-${hoje}.html`);
+    baixarArquivo(new Blob([html], { type: "text/html;charset=utf-8" }), `horarios-offline-${nome ? nome + "-" : ""}${hoje}.html`);
     span.textContent = "Baixado!";
     setTimeout(() => { span.textContent = original; }, 2500);
   } catch (e) {
     console.error(e);
-    span.textContent = "Não foi possível gerar (sem internet?)";
+    span.textContent = e && e.message && !/fetch|ler /i.test(e.message) ? e.message : "Não foi possível gerar (sem internet?)";
     setTimeout(() => { span.textContent = original; }, 4000);
   } finally { botao.disabled = false; }
 }
