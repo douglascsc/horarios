@@ -5,7 +5,7 @@
 // - Nada de fora do site é interceptado (a API do GitHub, usada para
 //   publicar, passa direto).
 // Ao mudar o código, troque VERSAO aqui e o ?v= do index.html/app.js.
-const VERSAO = "20261009p";
+const VERSAO = "20261009q";
 const CACHE = "horarios-" + VERSAO;
 const DADOS = "horarios-dados";
 const BASICO = [
@@ -13,6 +13,7 @@ const BASICO = [
   `css/estilo.css?v=${VERSAO}`, `js/protecao.js?v=${VERSAO}`, `js/icones.js?v=${VERSAO}`, `js/app.js?v=${VERSAO}`,
   `js/leitor-xlsx.js?v=${VERSAO}`, `js/interpretar.js?v=${VERSAO}`, `js/publicar.js?v=${VERSAO}`, `js/recursos.js?v=${VERSAO}`, `js/offline.js?v=${VERSAO}`, `js/leitura.js?v=${VERSAO}`,
   "assets/ifsul.png", "assets/icone-192.png", "assets/apple-touch-icon.png",
+  "fontes/dm-sans-latin.woff2", "fontes/dm-sans-latin-ext.woff2",
 ];
 
 self.addEventListener("install", (e) => {

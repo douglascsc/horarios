@@ -2,7 +2,7 @@
 
 Site para consultar os horários de aula por **turma, professor, sala, turno e dia**, gerado a partir da planilha do Excel. O administrador envia a planilha, o site organiza os dados sozinho, **mostra o que precisa ser revisado** (inconsistências, divergências e dúvidas), oferece uma prévia e só publica depois da **senha**.
 
-A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada): paleta do IFSul, fonte DM Sans, fundo quadriculado, painéis "vidro", chips de filtro, avisos coloridos e ícones Lucide embutidos. Também usa o mesmo cuidado contra clickjacking.
+A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada): paleta do IFSul, fonte DM Sans (hospedada no próprio site, em `fontes/`, licença SIL OFL), fundo quadriculado, painéis "vidro", chips de filtro, avisos coloridos e ícones Lucide embutidos. Também usa o mesmo cuidado contra clickjacking.
 
 ## Funcionalidades
 
@@ -18,17 +18,19 @@ A identidade visual segue o site [Chamada](https://github.com/douglascsc/chamada
 - Escolher um curso volta a agrupar **por turma**.
 - **Meu horário**: guarda a consulta (ex.: o horário do próprio professor) neste aparelho, com atalho para abrir de novo.
 - Aulas EaD ficam num bloco separado.
-- Contagem de períodos: as aulas do **PCP contam em dobro** nos totais e na carga horária. Horários e quadros não mudam. A regra fica em `PESO_POR_CURSO`, em `js/interpretar.js`.
+- Contagem de períodos: o total de cada quadro conta **o horário ocupado**. Quando a turma está dividida em grupos com aulas ao mesmo tempo (ex.: *Eletricidade I / Robótica*), aquele horário conta uma vez só: a ETM1M tem 28 períodos, e não a soma das linhas da planilha (32). O mesmo vale para turmas juntas numa sala.
+- As aulas do **PCP contam em dobro** nos totais e na carga horária. Horários e quadros não mudam. A regra fica em `PESO_POR_CURSO`, em `js/interpretar.js`.
 - No celular, o quadro semanal vira uma lista por dia, sem rolagem horizontal, e os filtros ficam recolhidos num botão.
 - Link compartilhável com os filtros (ex.: `…/#turma=INF1M`, `…/#prof=Mauro&periodo=2027-1`).
 - **Agenda**: o botão "Agenda" de cada quadro baixa um arquivo `.ics` com as aulas repetindo toda semana, para abrir no celular ou importar no Google Agenda. Usa as datas do período informadas pela coordenação, que podem ser ajustadas antes de baixar. Aulas EaD ficam de fora.
 - **Mudou recentemente**: depois de uma atualização do mesmo período, as aulas novas ou alteradas ganham um selo ("antes: professor, sala") e as que saíram aparecem no quadro, por 14 dias. Um aviso no topo permite ver só as mudanças. Se mais da metade do horário mudou, é considerado um horário novo e nada é marcado.
 - **Aplicativo e sem internet**: pode ser instalado na tela inicial ("Instalar app" ou "Adicionar à tela inicial"). Depois do primeiro acesso, funciona sem internet com os últimos horários guardados no aparelho, e avisa quando está assim.
-- **Versão offline**: o botão "Baixar versão offline" (na consulta e na área do administrador) gera **um único arquivo .html** (cerca de 350 KB) com o visual, o código e os horários de todos os períodos publicados. Ele abre com dois cliques, sem internet: no computador, num pendrive ou na pasta do Google Drive para computador. É só para consulta (busca, filtros, quadros, impressão e agenda), mostra a data em que foi gerado e precisa ser baixado de novo quando o horário mudar. O arquivo **não contém o endereço do site**, para poder circular sem divulgar o link. Na área do administrador também há "Versão offline desta planilha (sem publicar)", que gera o arquivo direto da planilha enviada, sem colocar nada online.
+- **Versão offline**: o botão "Baixar versão offline" (na consulta e na área do administrador) gera **um único arquivo .html** (cerca de 500 KB, com a fonte embutida) com o visual, o código e os horários de todos os períodos publicados. Ele abre com dois cliques, sem internet: no computador, num pendrive ou na pasta do Google Drive para computador. É só para consulta (busca, filtros, quadros, impressão e agenda), mostra a data em que foi gerado e precisa ser baixado de novo quando o horário mudar. O arquivo **não contém o endereço do site**, para poder circular sem divulgar o link. Na área do administrador também há "Versão offline desta planilha (sem publicar)", que gera o arquivo direto da planilha enviada, sem colocar nada online.
 - **Recado do período**: a coordenação pode deixar um aviso curto em destaque no topo (ex.: "Horário provisório até 20/10"). Ele é definido ao publicar ou em "Editar".
 - **Comparar períodos**: com dois ou mais períodos, o botão "Comparar" mostra, com os filtros atuais, o que só existe num, o que só existe no outro e o que mudou de professor, sala ou término (ex.: o horário de um professor em 2026/2 × 2027/1).
 - **Excel**: "Excel" baixa um `.xlsx` só com as aulas filtradas (dia, horário, turma, curso, disciplina, professor, sala e turno), pronto para filtrar e somar.
 - **Barra fixa no celular**: atalhos sempre à mão para Filtros (com o número de filtros ativos), Agora, Hoje e Topo. Ela some enquanto se digita.
+- **Salas livres**: escolha o dia e o horário (por padrão, o período atual) e veja as salas sem aula nesse intervalo, com "livre até…". É só uma indicação: o aviso da janela lembra que **a sala deve ser consultada e agendada no SUAP**, porque a lista não conhece reservas, eventos nem salas que não aparecem no horário.
 - **Impressão**: um quadro por página, ajustado à folha A4 deitada, com o título, o período e a data. O botão "Imprimir" de um quadro imprime só ele; o da barra imprime todos.
 
 **Área do administrador** (`…/#admin`)
@@ -100,7 +102,7 @@ A turma é montada como **curso + ano + turno** (`INF1M`, `PCP2N`), igual aos qu
 
 - **Erros** (a linha não é publicada): falta disciplina, dia ou início; dia ou horário que não pode ser lido; mais períodos do que cabem no dia.
 - **Divergências**:
-  - o mesmo professor em dois lugares ao mesmo tempo;
+  - o mesmo professor em dois lugares ao mesmo tempo (pela sobreposição real dos horários, de 5 em 5 minutos, o que pega também início fora da grade e planilhas sem quadros);
   - a mesma sala com duas aulas;
   - registro repetido;
   - turno informado diferente do horário (ex.: `M` às 13:30);

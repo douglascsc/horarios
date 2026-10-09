@@ -441,11 +441,16 @@ export function interpretar(abas, opcoes = {}) {
   }
   const porProf = new Map(), porSala = new Map(), porTurma = new Map();
   const add = (mapa, chave, a) => { if (!mapa.has(chave)) mapa.set(chave, []); mapa.get(chave).push(a); };
+  // professor e sala: sobreposição real, de 5 em 5 minutos (pega também
+  // horários fora da grade e planilhas sem quadros, em que as aulas não
+  // começam no mesmo minuto); a 1ª marca em comum é o início do choque
   for (const a of aulas) {
     if (a.dia === "ead") continue;
     for (const p of a.periodos) {
-      for (const prof of a.professores) add(porProf, `${normalizar(prof)}|${a.dia}|${p.ini}`, a);
-      for (const s of a.salas) add(porSala, `${normalizar(s)}|${a.dia}|${p.ini}`, a);
+      for (let t = Math.max(p.ini, a.ini); t < p.fim; t += 5) { // início mantido fora da grade: conta do início real
+        for (const prof of a.professores) add(porProf, `${normalizar(prof)}|${a.dia}|${t}`, a);
+        for (const s of a.salas) add(porSala, `${normalizar(s)}|${a.dia}|${t}`, a);
+      }
       add(porTurma, `${a.turma}|${a.dia}|${p.ini}`, a);
     }
   }

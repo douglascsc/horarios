@@ -105,7 +105,6 @@ Testes funcionais de ponta a ponta, com a publicação no GitHub simulada, **tod
 
 | Item | Motivo |
 |---|---|
-| Hospedar a fonte DM Sans no próprio site | Removeria a dependência do Google Fonts, mas os arquivos da fonte não puderam ser baixados neste ambiente. O site já funciona sem ela (cai na fonte do sistema). |
 | Tema escuro | Não existe no Chamada, e a identidade visual pede consistência. |
 | Minificar o código (app.js tem cerca de 95 KB) | Exigiria uma etapa de build; o projeto foi pensado para ser editável sem ferramentas. O ganho em rede é pequeno (o servidor já compacta). |
 
@@ -114,7 +113,9 @@ Testes funcionais de ponta a ponta, com a publicação no GitHub simulada, **tod
 Implementados a pedido, em seguida:
 - **barra fixa no celular** (Filtros, Agora, Hoje e Topo), que some enquanto se digita e não cobre o rodapé;
 - **assistente passo a passo** no administrador (Planilha → Revisão → Destino → Publicar), que só deixa avançar com o passo resolvido e diz o que falta; o botão "Próximo" bloqueado é anunciado como indisponível aos leitores de tela;
-- senha de leitura, recado do período, comparação de períodos e exportação para o Excel.
+- senha de leitura, recado do período, comparação de períodos e exportação para o Excel;
+- **fonte DM Sans hospedada no próprio site** (`fontes/`, cerca de 55 KB, pré-carregada): o site não depende mais do Google Fonts, e a versão offline leva a fonte embutida;
+- **salas livres** (janela com aviso para consultar e agendar no SUAP), sem violações do axe e com alvos de 44 px.
 
 Nova rodada automática (mesmas 11 telas, incluindo os passos 2, 3 e 4 do administrador): nenhuma rolagem horizontal, nenhum texto < 12 px, nenhuma violação do axe e alvos de 44 px nas telas de toque. As únicas exceções são os botões de opção e as caixas de marcar dentro de cartões e rótulos clicáveis, cujo alvo real é o cartão ou o rótulo inteiro.
 

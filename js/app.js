@@ -3,16 +3,16 @@
 // publicação com senha), com até MAX_PERIODOS períodos letivos.
 // Todo conteúdo vindo da planilha entra na página como TEXTO
 // (textContent), nunca como HTML.
-import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009p";
-import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009p";
+import { lerPlanilha, ErroPlanilha, LIMITE_ARQUIVO } from "./leitor-xlsx.js?v=20261009q";
+import { interpretar, normalizar, comparar, pesoDoCurso, DIAS, NOME_DIA, NOME_TURNO, ROTULO_CAMPO, DIA_ESPECIAL_PADRAO, MOTIVO_DIA_ESPECIAL, GRADE_OFICIAL } from "./interpretar.js?v=20261009q";
 import {
   alterarPeriodos, salvarConfiguracao, trocarSenha, decifrarToken, chaveLeituraDaConfig, PEDE_SENHA_LEITURA, idDoPeriodo, ErroPublicacao,
   protegerLeitura, trocarSenhaLeitura, removerProtecaoLeitura,
   ARQUIVO_CONFIG, ARQUIVO_DADOS, ARQUIVO_INDICE, MAX_PERIODOS, TAMANHO_MINIMO_SENHA,
-} from "./publicar.js?v=20261009p";
-import { gerarArquivoOffline } from "./offline.js?v=20261009p";
-import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009p";
-import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009p";
+} from "./publicar.js?v=20261009q";
+import { gerarArquivoOffline } from "./offline.js?v=20261009q";
+import { ARQUIVO_LEITURA, TAMANHO_MINIMO_SENHA_LEITURA, estaCifrado, decifrarJson, destrancarComSenha, paraBase64, deBase64 } from "./leitura.js?v=20261009q";
+import { gerarXlsx, gerarIcs, compararVersoes, chaveAula, detalheAula, dataDeTexto } from "./recursos.js?v=20261009q";
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs, ...filhos) {
@@ -413,6 +413,84 @@ function abrirAgenda(tipo, chave, aulas) {
     msg);
 }
 
+// ---- salas livres: salas sem aula (no horário publicado) num dia e horário
+// Só uma indicação: a reserva de verdade é feita no SUAP.
+function periodosDoDia(dados, idx, dia) {
+  const lista = (dados.periodosPorDia && dados.periodosPorDia[dia]) || dados.periodos;
+  return lista && lista.length ? lista.map(([i, f]) => ({ ini: minutos(i), fim: minutos(f) })) : idx.slots;
+}
+function salasLivres(idx, dia, ini, fim) {
+  const doDia = idx.aulas.filter((a) => a.dia === dia);
+  const livres = [];
+  for (const sala of idx.salas) {
+    const aulas = doDia.filter((a) => a.salas.includes(sala));
+    if (aulas.some((a) => a.ini < fim && a.fimMin > ini)) continue;
+    const proxima = aulas.filter((a) => a.ini >= fim).sort((x, y) => x.ini - y.ini)[0];
+    livres.push({ sala, ate: proxima ? proxima.ini : null });
+  }
+  return livres;
+}
+function abrirSalasLivres() {
+  const dados = dadosAtivos();
+  if (!dados) return;
+  const idx = indice(dados);
+  const dias = idx.dias.filter((d) => d !== "ead");
+  if (!dias.length || !idx.salas.length) { abrirModal("Salas livres", el("p", { class: "subtitulo", text: "Este período não tem aulas presenciais com sala informada." })); return; }
+  // padrão: o período em andamento (ou o próximo) de hoje; senão, o próximo dia com aula
+  const agora = new Date().getHours() * 60 + new Date().getMinutes();
+  const hoje = diaDeHoje();
+  let dia0 = dias.includes(hoje) ? hoje : null, k0 = 0;
+  if (dia0) {
+    const ps = periodosDoDia(dados, idx, dia0);
+    k0 = ps.findIndex((p) => p.fim > agora);
+    if (k0 < 0) { dia0 = null; k0 = 0; }
+  }
+  if (!dia0) {
+    const ordem = DIAS.filter((d) => d !== "ead");
+    const depois = ordem.slice(ordem.indexOf(hoje) + 1).concat(ordem);
+    dia0 = depois.find((d) => dias.includes(d)) || dias[0];
+  }
+  const selDia = el("select", { class: "text-field" }, ...dias.map((d) => el("option", { value: d, text: NOME_DIA[d] + (d === hoje ? " (hoje)" : "") })));
+  const selIni = el("select", { class: "text-field" }), selFim = el("select", { class: "text-field" });
+  const resultado = el("div", { role: "status", "aria-live": "polite" });
+  const preencherHorarios = (k) => {
+    const ps = periodosDoDia(dados, idx, selDia.value);
+    selIni.replaceChildren(...ps.map((p, i) => el("option", { value: String(i), text: `${hhmm(p.ini)} (${i + 1}º)` })));
+    selIni.value = String(Math.min(k, ps.length - 1));
+  };
+  const preencherFim = () => {
+    const ps = periodosDoDia(dados, idx, selDia.value), i0 = Number(selIni.value), antes = Number(selFim.value);
+    selFim.replaceChildren(...ps.slice(i0).map((p, j) => el("option", { value: String(i0 + j), text: hhmm(p.fim) })));
+    selFim.value = String(antes >= i0 && antes < ps.length ? antes : i0);
+  };
+  const mostrar = () => {
+    const ps = periodosDoDia(dados, idx, selDia.value);
+    const ini = ps[Number(selIni.value)].ini, fim = ps[Number(selFim.value)].fim;
+    const livres = salasLivres(idx, selDia.value, ini, fim);
+    const quando = `${NOME_DIA[selDia.value]}, das ${hhmm(ini)} às ${hhmm(fim)}`;
+    resultado.replaceChildren(
+      el("p", { class: "contagem", style: "margin:.75rem 0 .5rem" }, el("strong", { text: plural(livres.length, "sala livre", "salas livres") }), ` de ${idx.salas.length} · ${quando}`),
+      livres.length
+        ? el("ul", { class: "lista-salas" }, ...livres.map((s) => el("li", null, el("strong", { text: `Sala ${s.sala}` }), el("span", { text: s.ate === null ? "livre até o fim do dia" : `livre até ${hhmm(s.ate)}` }))))
+        : el("p", { class: "subtitulo", text: "Nenhuma sala sem aula nesse horário." }));
+  };
+  selDia.value = dia0;
+  preencherHorarios(k0); preencherFim();
+  selDia.addEventListener("change", () => { preencherHorarios(Number(selIni.value)); preencherFim(); mostrar(); });
+  selIni.addEventListener("change", () => { preencherFim(); mostrar(); });
+  selFim.addEventListener("change", mostrar);
+  abrirModal("Salas livres",
+    el("div", { class: "notice notice-warn", role: "note" }, icone("triangle-alert"),
+      el("span", null, el("strong", { text: "Consulte e agende a sala no SUAP antes de usar. " }),
+        "Esta lista mostra só as salas sem aula no horário publicado aqui. Ela não conhece reservas, eventos nem salas que não aparecem no horário.")),
+    el("div", { class: "form-grade tres", style: "margin-top:1rem" },
+      el("label", null, el("span", { class: "campo-rotulo", text: "Dia" }), selDia),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Das" }), selIni),
+      el("label", null, el("span", { class: "campo-rotulo", text: "Até" }), selFim)),
+    resultado);
+  mostrar();
+}
+
 // ---- impressão (fim): limpa os modos especiais
 function aposImprimir() {
   const conferencia = document.body.classList.contains("conferencia");
@@ -472,6 +550,7 @@ function ligarConsulta() {
   });
   $("btn-imprimir-todos").addEventListener("click", () => imprimir(null));
   $("btn-excel").addEventListener("click", baixarExcel);
+  $("btn-salas-livres").addEventListener("click", abrirSalasLivres);
   ligarBarraMovel();
   $("btn-meu-horario").addEventListener("click", alternarMeuHorario);
 }
@@ -720,8 +799,23 @@ function agrupar(aulas, idx) {
   return chaves.map((k) => ({ chave: k, aulas: grupos.get(k) }));
 }
 
-// períodos que CONTAM (PCP em dobro), sem mudar a duração real
-const periodosContados = (aulas) => aulas.reduce((s, a) => s + (a.periodos || 1) * (a.peso || 1), 0);
+// Períodos de um conjunto de aulas, pelo horário ocupado: cada período da
+// grade conta uma vez, mesmo com duas aulas nele (turma dividida em grupos,
+// ex.: "Eletricidade I / Robótica"; ou turmas juntas na mesma sala).
+// "contados" aplica a regra do PCP (em dobro), sem mudar a duração real.
+function contarPeriodos(aulas, dados, idx) {
+  let reais = 0, contados = 0;
+  const ocupados = new Map(); // "dia|nº do período" -> maior peso
+  for (const a of aulas) {
+    const n = a.periodos || 1, peso = a.peso || 1;
+    const grade = a.dia === "ead" || !dados ? [] : periodosDoDia(dados, idx, a.dia);
+    const ks = grade.map((s, k) => (s.ini < a.fimMin && s.fim > a.ini ? k : -1)).filter((k) => k >= 0);
+    if (ks.length !== n) { reais += n; contados += n * peso; continue; } // EaD ou fora da grade: como está
+    for (const k of ks) { const c = `${a.dia}|${k}`; ocupados.set(c, Math.max(ocupados.get(c) || 0, peso)); }
+  }
+  for (const peso of ocupados.values()) { reais += 1; contados += peso; }
+  return { reais, contados };
+}
 
 function renderResultados() {
   const dados = dadosAtivos();
@@ -801,7 +895,7 @@ function renderGrupo(g, idx, dados) {
     meta = partes.join(" · ");
   } else if (tipo === "dia") nome = NOME_DIA[g.chave] || g.chave;
   else if (tipo === "sala" && /^\d/.test(g.chave)) nome = `Sala ${g.chave}`;
-  const reais = g.aulas.reduce((s, a) => s + (a.periodos || 1), 0), contados = periodosContados(g.aulas);
+  const { reais, contados } = contarPeriodos(g.aulas, dados, idx);
   const txtPeriodos = contados !== reais
     ? `${plural(contados, "período", "períodos")} (PCP conta em dobro)`
     : plural(reais, "período", "períodos");

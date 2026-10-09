@@ -29,13 +29,13 @@ async function texto(url) {
   if (!r.ok) throw new Error(`Não foi possível ler ${url}`);
   return r.text();
 }
-async function dataUrl(url) {
+async function dataUrl(url, tipo) {
   const r = await fetch(url);
   if (!r.ok) return "";
   const b = new Uint8Array(await r.arrayBuffer());
   let s = "";
   for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
-  return `data:${r.headers.get("content-type") || "image/png"};base64,${btoa(s)}`;
+  return `data:${tipo || r.headers.get("content-type") || "image/png"};base64,${btoa(s)}`;
 }
 // nada dentro de <script> pode conter "</script"
 const seguroEmScript = (t) => t.replace(/<\/(script)/gi, "<\\/$1");
@@ -43,11 +43,15 @@ const seguroEmScript = (t) => t.replace(/<\/(script)/gi, "<\\/$1");
 // arquivos: { "dados/periodos.json": {...}, "dados/periodos/2026-2.json": {...} }
 export async function gerarArquivoOffline({ versao, arquivos }) {
   const v = versao ? `?v=${versao}` : "";
-  const [html, css, icones, logo, favicon, ...codigos] = await Promise.all([
+  const [html, cssSite, icones, logo, favicon, fonte, fonteExt, ...codigos] = await Promise.all([
     texto("index.html"), texto(`css/estilo.css${v}`), texto(`js/icones.js${v}`),
     dataUrl("assets/ifsul.png"), dataUrl("assets/icone-192.png"),
+    dataUrl("fontes/dm-sans-latin.woff2", "font/woff2"), dataUrl("fontes/dm-sans-latin-ext.woff2", "font/woff2"),
     ...MODULOS.map((n) => texto(`js/${n}.js${v}`)),
   ]);
+  // a fonte vai embutida (sem ela, o arquivo usa a fonte do sistema)
+  const css = cssSite.split('url("../fontes/dm-sans-latin-ext.woff2")').join(fonteExt ? `url("${fonteExt}")` : 'local("DM Sans")')
+    .split('url("../fontes/dm-sans-latin.woff2")').join(fonte ? `url("${fonte}")` : 'local("DM Sans")');
   const geradoEm = new Date().toISOString();
   // o endereço do site NÃO vai no arquivo (ele pode circular sem divulgar o link)
   const pacote = { geradoEm, arquivos };
@@ -55,10 +59,10 @@ export async function gerarArquivoOffline({ versao, arquivos }) {
 
   const doc = new DOMParser().parseFromString(html, "text/html");
   const q = (sel) => doc.querySelector(sel);
-  // segurança: o arquivo não acessa nada da internet além da fonte do Google
+  // segurança: o arquivo não acessa nada da internet
   const csp = q('meta[http-equiv="Content-Security-Policy"]');
-  if (csp) csp.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none'");
-  for (const l of doc.querySelectorAll('link[rel="modulepreload"]')) l.remove();
+  if (csp) csp.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none'");
+  for (const l of doc.querySelectorAll('link[rel="modulepreload"], link[rel="preload"]')) l.remove();
   for (const sel of ["#anti-clickjack", 'script[src*="protecao.js"]', 'link[rel="manifest"]', 'link[rel="apple-touch-icon"]', 'meta[name="apple-mobile-web-app-capable"]', 'meta[name="mobile-web-app-capable"]', 'meta[name="apple-mobile-web-app-title"]']) q(sel)?.remove();
   const icon = q('link[rel="icon"]');
   if (icon) { if (favicon) icon.setAttribute("href", favicon); else icon.remove(); }
