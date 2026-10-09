@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pt-BR">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horários — IFSul</title>
+  <meta name="description" content="Consulta dos horários de aula por turma, professor, sala e dia.">
+  <!-- Só carrega arquivos do próprio site (e a fonte do Google); conexões
+       externas apenas com a API do GitHub, usada na publicação. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <style id="anti-clickjack">body { display: none !important; }</style>
+  <script src="js/protecao.js"></script>
+  <script src="js/icones.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/estilo.css">
+  <meta name="theme-color" content="#2B7A40">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icone-192.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <script type="module" src="js/app.js"></script>
+ </head>
+ <body>
+  <div id="barra-previa" class="barra-previa" hidden role="status">
+   <div class="container">
+    <span><i data-lucide="eye"></i> Prévia: é assim que o site vai ficar. Ainda <strong>não foi publicado</strong>.</span>
+    <span class="linha-acoes" style="margin:0">
+     <button id="btn-previa-voltar" class="botao botao-secundario" type="button"><i data-lucide="arrow-left"></i> Voltar à revisão</button>
+    </span>
+   </div>
+  </div>
+
+  <div class="app-wrapper">
+   <div class="accent-disc accent-disc--lime" aria-hidden="true"></div>
+   <div class="accent-disc accent-disc--teal" aria-hidden="true"></div>
+
+   <header class="topo">
+    <div class="container topo-linha">
+     <a class="marca" href="#" id="link-inicio">
+      <img src="assets/ifsul.png" alt="Instituto Federal Sul-rio-grandense" class="brand-mark">
+      <div>
+       <h1>Horários de aula</h1>
+       <p id="subtitulo-topo">Consulta por turma, professor, sala e dia</p>
+      </div>
+     </a>
+     <div class="topo-acoes">
+      <button id="btn-admin" class="status-pill" type="button"><i data-lucide="shield-check"></i> <span>Área do administrador</span></button>
+      <span id="status-publicacao" class="status-pill ambar"><span class="ponto" aria-hidden="true"></span> <span id="status-publicacao-texto">Carregando…</span></span>
+     </div>
+    </div>
+   </header>
+
+   <main class="container">
+
+    <!-- ===================== CONSULTA ===================== -->
+    <section id="view-consulta">
+     <section class="hero-panel glass-surface reveal">
+      <span class="selo">Horários</span>
+      <h2 id="titulo-consulta" class="titulo-secao">Consulte os horários</h2>
+      <p id="descricao-consulta" class="subtitulo">Pesquise ou filtre por curso, turma, professor, sala, turno e dia.</p>
+
+      <div class="search-wrap">
+       <i data-lucide="search" class="search-icon"></i>
+       <label class="sr-only" for="busca">Buscar</label>
+       <input id="busca" class="search-input" type="search" autocomplete="off" placeholder="Buscar disciplina, professor, turma ou sala…">
+       <button id="limpar-busca" class="clear-search focus-ring" type="button" aria-label="Limpar busca" hidden><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="filtros">
+       <div id="filtro-cursos" class="chips" role="group" aria-label="Filtrar por curso"></div>
+       <div class="filtros-grade">
+        <label><span class="campo-rotulo">Turma</span><select id="filtro-turma" class="text-field"></select></label>
+        <label><span class="campo-rotulo">Professor</span><select id="filtro-professor" class="text-field"></select></label>
+        <label><span class="campo-rotulo">Sala</span><select id="filtro-sala" class="text-field"></select></label>
+        <label><span class="campo-rotulo">Turno</span><select id="filtro-turno" class="text-field"></select></label>
+       </div>
+       <div id="filtro-dias" class="chips" role="group" aria-label="Filtrar por dia"></div>
+      </div>
+
+      <div class="barra-resultado">
+       <p id="contagem" class="contagem" aria-live="polite"></p>
+       <button id="btn-limpar-filtros" class="botao-link" type="button" hidden><i data-lucide="undo-2"></i> Limpar filtros</button>
+      </div>
+      <div class="visao" style="margin-top:.75rem">
+       <span class="campo-rotulo" style="margin:0">Agrupar por</span>
+       <div id="seg-agrupar" class="segmentado" role="group" aria-label="Agrupar por">
+        <button type="button" data-valor="turma" aria-pressed="true">Turma</button>
+        <button type="button" data-valor="professor" aria-pressed="false">Professor</button>
+        <button type="button" data-valor="sala" aria-pressed="false">Sala</button>
+        <button type="button" data-valor="dia" aria-pressed="false">Dia</button>
+       </div>
+       <div id="seg-exibir" class="segmentado" role="group" aria-label="Exibir como">
+        <button type="button" data-valor="grade" aria-pressed="true"><i data-lucide="layout-grid"></i> Semana</button>
+        <button type="button" data-valor="lista" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
+       </div>
+       <label id="campo-ordenar" hidden><span class="sr-only">Ordenar por</span>
+        <select id="ordenar" class="text-field" style="min-height:40px;padding-top:.35rem;padding-bottom:.35rem">
+         <option value="horario">Ordenar: dia e horário</option>
+         <option value="disciplina">Ordenar: disciplina</option>
+         <option value="turma">Ordenar: turma</option>
+         <option value="professor">Ordenar: professor</option>
+         <option value="sala">Ordenar: sala</option>
+        </select>
+       </label>
+      </div>
+     </section>
+
+     <div id="resultados" class="grupos" aria-live="polite"></div>
+    </section>
+
+    <!-- ===================== ADMINISTRADOR ===================== -->
+    <section id="view-admin" hidden>
+     <div class="passos">
+      <section class="hero-panel glass-surface reveal">
+       <button id="btn-admin-voltar" class="botao-link" type="button"><i data-lucide="arrow-left"></i> Voltar à consulta</button>
+       <span class="selo" style="margin-top:.5rem">Área do administrador</span>
+       <h2 class="titulo-secao">Atualizar os horários</h2>
+       <p class="subtitulo">Envie a planilha do Excel. O site lê os dados, monta a consulta e mostra o que precisa ser revisado. A planilha é lida aqui no seu navegador; nada é publicado antes de você confirmar com a senha.</p>
+
+       <label id="zona-envio" class="zona-envio" for="arquivo">
+        <span class="icone-grande"><i data-lucide="upload"></i></span>
+        <strong>Escolher planilha (.xlsx)</strong>
+        <span>ou arraste o arquivo para cá</span>
+       </label>
+       <input id="arquivo" class="sr-only" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+       <div id="msg-envio" class="notice notice-info" style="margin-top:1rem" hidden role="status"></div>
+       <p class="texto-pequeno" style="margin-top:.75rem">Só os valores das células são lidos: fórmulas e macros nunca são executadas.</p>
+      </section>
+
+      <section id="sec-leitura" class="glass-surface reveal" hidden>
+       <div class="rotulo-barra">1. Leitura</div>
+       <h3 class="titulo-card" id="leitura-titulo">Planilha lida</h3>
+       <div id="leitura-estatisticas" class="estatisticas"></div>
+       <table class="tabela-abas">
+        <thead><tr><th>Aba</th><th>Como foi usada</th><th>Registros</th><th>Cabeçalhos encontrados</th></tr></thead>
+        <tbody id="leitura-abas"></tbody>
+       </table>
+      </section>
+
+      <section id="sec-revisao" class="glass-surface reveal" hidden>
+       <div class="rotulo-barra">2. Revisão</div>
+       <h3 class="titulo-card">Inconsistências, divergências e dúvidas</h3>
+       <p class="subtitulo">Confira os pontos abaixo. Corrija na planilha e envie de novo, ou publique assim mesmo se estiver tudo certo.</p>
+       <div id="revisao-resumo" style="margin-top:1rem"></div>
+       <div id="revisao-niveis" class="chips" style="margin-top:1rem" role="group" aria-label="Filtrar avisos"></div>
+       <div id="revisao-lista"></div>
+      </section>
+
+      <section id="sec-publicar" class="glass-surface reveal" hidden>
+       <div class="rotulo-barra">3. Prévia e publicação</div>
+       <h3 class="titulo-card">Publicar os novos horários</h3>
+       <div class="form-grade">
+        <label><span class="campo-rotulo">Título exibido no site</span><input id="pub-titulo" class="text-field" type="text" maxlength="120" placeholder="Ex.: Horários 2026/2 — Campus Sapiranga"></label>
+       </div>
+       <div class="linha-acoes">
+        <button id="btn-previa" class="botao botao-suave" type="button"><i data-lucide="eye"></i> Ver prévia do site</button>
+        <button id="btn-baixar-json" class="botao botao-secundario" type="button"><i data-lucide="download"></i> Baixar dados (.json)</button>
+       </div>
+       <div id="pub-sem-config" class="notice notice-warn" style="margin-top:1rem" hidden>
+        <i data-lucide="triangle-alert"></i>
+        <span>A publicação ainda não foi configurada neste site. Abra <strong>Configuração da publicação</strong> abaixo (é feito uma vez só).</span>
+       </div>
+       <form id="form-publicar" autocomplete="off">
+        <label id="pub-confirmar-wrap" class="caixa-marcar" hidden>
+         <input id="pub-confirmar" type="checkbox">
+         <span id="pub-confirmar-texto">Revisei os avisos e quero publicar assim mesmo.</span>
+        </label>
+        <div class="form-grade duas">
+         <label><span class="campo-rotulo">Senha de publicação</span><input id="pub-senha" class="text-field" type="password" autocomplete="current-password" required></label>
+        </div>
+        <div class="linha-acoes">
+         <button id="btn-publicar" class="botao botao-primario" type="submit"><i data-lucide="upload"></i> <span>Publicar horários</span></button>
+        </div>
+       </form>
+       <div id="msg-publicar" class="notice" style="margin-top:1rem" hidden role="status"></div>
+      </section>
+
+      <section class="glass-surface reveal">
+       <details id="detalhes-config" class="detalhes-config">
+        <summary><i data-lucide="settings"></i> Configuração da publicação <i data-lucide="chevron-down" class="chev"></i></summary>
+        <p id="config-status" class="subtitulo"></p>
+
+        <h4 style="margin-top:1.25rem;font-weight:800">Configurar (ou trocar o token)</h4>
+        <p class="texto-pequeno" style="margin-top:.25rem">Feito uma vez. O site publica gravando o arquivo de horários neste repositório do GitHub; para isso precisa de um token que só pode escrever aqui. O token é guardado <strong>cifrado com a senha</strong>: depois, para publicar, basta a senha.</p>
+        <ol class="passo-a-passo">
+         <li>No GitHub: <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</strong>.</li>
+         <li>Em <em>Repository access</em>, escolha <strong>Only select repositories</strong> e marque só o repositório deste site.</li>
+         <li>Em <em>Permissions → Repository permissions</em>, dê <strong>Contents: Read and write</strong> (nada mais).</li>
+         <li>Escolha a validade (ex.: 1 ano), gere, copie o token e cole abaixo junto com uma senha de pelo menos 10 caracteres.</li>
+        </ol>
+        <form id="form-config" autocomplete="off">
+         <div class="form-grade duas">
+          <label><span class="campo-rotulo">Token do GitHub</span><input id="cfg-token" class="text-field" type="password" autocomplete="off" required placeholder="github_pat_…"></label>
+          <label><span class="campo-rotulo">Repositório (dono/nome)</span><input id="cfg-repo" class="text-field" type="text" required></label>
+          <label><span class="campo-rotulo">Senha de publicação</span><input id="cfg-senha" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
+          <label><span class="campo-rotulo">Repita a senha</span><input id="cfg-senha2" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
+         </div>
+         <div class="linha-acoes"><button id="btn-config" class="botao botao-primario" type="submit"><i data-lucide="key-round"></i> <span>Salvar configuração</span></button></div>
+        </form>
+        <div id="msg-config" class="notice" style="margin-top:1rem" hidden role="status"></div>
+
+        <div id="bloco-trocar-senha" hidden>
+         <h4 style="margin-top:1.5rem;font-weight:800">Trocar a senha</h4>
+         <form id="form-senha" autocomplete="off">
+          <div class="form-grade duas">
+           <label><span class="campo-rotulo">Senha atual</span><input id="sen-atual" class="text-field" type="password" autocomplete="current-password" required></label>
+           <span></span>
+           <label><span class="campo-rotulo">Nova senha</span><input id="sen-nova" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
+           <label><span class="campo-rotulo">Repita a nova senha</span><input id="sen-nova2" class="text-field" type="password" autocomplete="new-password" minlength="10" required></label>
+          </div>
+          <div class="linha-acoes"><button id="btn-senha" class="botao botao-secundario" type="submit"><i data-lucide="lock"></i> <span>Trocar senha</span></button></div>
+         </form>
+         <div id="msg-senha" class="notice" style="margin-top:1rem" hidden role="status"></div>
+        </div>
+       </details>
+      </section>
+     </div>
+    </section>
+   </main>
+
+   <footer class="rodape">
+    <div class="container">
+     <span>Este projeto é de iniciativa docente. Em caso de divergência, vale o horário oficial divulgado pela instituição.</span>
+     <span><span id="ano-rodape"></span> - Desenvolvido por <a href="https://douglasc.top/sobre/" target="_blank" rel="noopener">Prof. Douglas Camargo Carvalho</a>, docente do IFSul — Campus Sapiranga.</span>
+    </div>
+   </footer>
+  </div>
+ </body>
+</html>
